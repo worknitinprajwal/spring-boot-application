@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: fitness-tracker-dev
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    # Git repository containing Helm chart
+    repoURL: https://github.com/YOUR-USERNAME/fitness-tracker.git  # UPDATE THIS
+    targetRevision: develop  # Deploy from develop branch
+    path: k8s/helm-chart
+    helm:
+      valueFiles:
+        - values.yaml
+        - ../overlays/dev/values-dev.yaml
+
+  destination:
+    server: https://172.18.0.2:6443  # dev-cluster
+    namespace: dev
+
+  syncPolicy:
+    automated:
+      prune: true      # Delete resources when removed from Git
+      selfHeal: true   # Auto-sync when cluster state drifts
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true  # Create namespace if it doesn't exist
+      - PruneLast=true        # Delete old resources last
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  # Health check configuration
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas  # Ignore replica count differences (for HPA)

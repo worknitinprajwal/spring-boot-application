@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: fitness-tracker-test
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    # Git repository containing Helm chart
+    repoURL: https://github.com/YOUR-USERNAME/fitness-tracker.git  # UPDATE THIS
+    targetRevision: main  # Deploy from main branch for test
+    path: k8s/helm-chart
+    helm:
+      valueFiles:
+        - values.yaml
+        - ../overlays/test/values-test.yaml
+
+  destination:
+    server: https://172.18.0.8:6443  # test-cluster
+    namespace: test
+
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas
