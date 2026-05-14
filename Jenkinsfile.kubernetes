@@ -131,7 +131,7 @@ spec:
                 container('maven') {
                     echo "🔒 Running Aikido security scan..."
                     script {
-                        withCredentials([string(credentialsId: 'aikido-api-key', variable: 'AIKIDO_API_KEY')]) {
+                        withCredentials([string(credentialsId: 'AIKIDO_CLIENT_API_KEY', variable: 'AIKIDO_CLIENT_API_KEY')]) {
                             sh """
                                 # Install Node.js if not available (required for Aikido CLI)
                                 if ! command -v node &> /dev/null; then
@@ -146,7 +146,7 @@ spec:
 
                                 # Run Aikido vulnerability scan
                                 echo "Running Aikido dependency scan..."
-                                export AIKIDO_API_KEY=\${AIKIDO_API_KEY}
+                                export AIKIDO_CLIENT_API_KEY=\${AIKIDO_CLIENT_API_KEY}
 
                                 # Scan pom.xml for Maven dependencies
                                 aikido scan --file pom.xml --format json --output ${ARTIFACTS_DIR}/aikido-report.json || echo "Scan completed with findings"
