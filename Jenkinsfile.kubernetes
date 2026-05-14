@@ -181,6 +181,163 @@ spec:
                                     if command -v jq >/dev/null 2>&1; then
                                         cat ${ARTIFACTS_DIR}/aikido-scan-details.json | jq '.' > ${ARTIFACTS_DIR}/aikido-scan-details-formatted.json 2>/dev/null || true
                                     fi
+
+                                    # Generate HTML report from scan results
+                                    echo "Generating HTML report..."
+                                    cat > ${ARTIFACTS_DIR}/aikido-report.html << 'HTMLEOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Aikido Security Scan Report</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h1 { color: #333; border-bottom: 3px solid #e74c3c; padding-bottom: 10px; }
+        h2 { color: #555; margin-top: 30px; border-bottom: 2px solid #3498db; padding-bottom: 8px; }
+        .summary { display: flex; gap: 20px; margin: 20px 0; flex-wrap: wrap; }
+        .summary-card { flex: 1; min-width: 200px; padding: 20px; border-radius: 6px; color: white; }
+        .critical { background: #c0392b; }
+        .high { background: #e67e22; }
+        .medium { background: #f39c12; }
+        .low { background: #27ae60; }
+        .info { background: #3498db; }
+        .summary-card h3 { margin: 0 0 10px 0; font-size: 14px; opacity: 0.9; }
+        .summary-card .count { font-size: 36px; font-weight: bold; margin: 0; }
+        .issue-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .issue-table th { background: #34495e; color: white; padding: 12px; text-align: left; font-weight: 600; }
+        .issue-table td { padding: 12px; border-bottom: 1px solid #ddd; }
+        .issue-table tr:hover { background: #f8f9fa; }
+        .severity-badge { padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; color: white; display: inline-block; }
+        .severity-critical { background: #c0392b; }
+        .severity-high { background: #e67e22; }
+        .severity-medium { background: #f39c12; }
+        .severity-low { background: #27ae60; }
+        .issue-id { font-family: monospace; color: #2c3e50; font-weight: 600; }
+        .metadata { background: #ecf0f1; padding: 15px; border-radius: 6px; margin: 20px 0; }
+        .metadata p { margin: 5px 0; color: #555; }
+        .gate-status { padding: 20px; border-radius: 6px; margin: 20px 0; font-weight: bold; }
+        .gate-failed { background: #fadbd8; color: #c0392b; border-left: 4px solid #c0392b; }
+        .gate-passed { background: #d5f4e6; color: #27ae60; border-left: 4px solid #27ae60; }
+        .link { color: #3498db; text-decoration: none; }
+        .link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔒 Aikido Security Scan Report</h1>
+
+        <div class="metadata">
+            <p><strong>Repository:</strong> REPO_NAME_PLACEHOLDER</p>
+            <p><strong>Commit:</strong> COMMIT_PLACEHOLDER</p>
+            <p><strong>Branch:</strong> BRANCH_PLACEHOLDER</p>
+            <p><strong>Build:</strong> BUILD_NUMBER_PLACEHOLDER</p>
+            <p><strong>Scan Date:</strong> SCAN_DATE_PLACEHOLDER</p>
+            <p><strong>Scan ID:</strong> SCAN_ID_PLACEHOLDER</p>
+            <p><strong>View in Aikido:</strong> <a href="DIFF_URL_PLACEHOLDER" class="link" target="_blank">Open Aikido Dashboard</a></p>
+        </div>
+
+        <div class="gate-status GATE_STATUS_CLASS">
+            GATE_STATUS_MESSAGE
+        </div>
+
+        <h2>Security Issues Summary</h2>
+        <div class="summary">
+            <div class="summary-card critical">
+                <h3>CRITICAL</h3>
+                <p class="count">CRITICAL_COUNT</p>
+            </div>
+            <div class="summary-card high">
+                <h3>HIGH</h3>
+                <p class="count">HIGH_COUNT</p>
+            </div>
+            <div class="summary-card medium">
+                <h3>MEDIUM</h3>
+                <p class="count">MEDIUM_COUNT</p>
+            </div>
+            <div class="summary-card low">
+                <h3>LOW</h3>
+                <p class="count">LOW_COUNT</p>
+            </div>
+        </div>
+
+        <h2>Issues Introduced (48 total)</h2>
+        <table class="issue-table">
+            <thead>
+                <tr>
+                    <th>Severity</th>
+                    <th>Type</th>
+                    <th>Issue ID</th>
+                    <th>Component</th>
+                </tr>
+            </thead>
+            <tbody id="issues-body">
+                <!-- Issues will be inserted here -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // Parse JSON data embedded below
+        const scanData = SCAN_DATA_PLACEHOLDER;
+
+        // Populate issues table
+        const issuesBody = document.getElementById('issues-body');
+        if (scanData && scanData.issues) {
+            scanData.issues.forEach(issue => {
+                const row = document.createElement('tr');
+                const severity = issue.severity || 'unknown';
+                row.innerHTML = \`
+                    <td><span class="severity-badge severity-\${severity.toLowerCase()}">\${severity.toUpperCase()}</span></td>
+                    <td>\${issue.type || 'Security Issue'}</td>
+                    <td class="issue-id">\${issue.id || issue.cve || 'N/A'}</td>
+                    <td>\${issue.component || issue.package || 'N/A'}</td>
+                \`;
+                issuesBody.appendChild(row);
+            });
+        }
+    </script>
+</body>
+</html>
+HTMLEOF
+
+                                    # Parse JSON and populate HTML report
+                                    if [ -f ${ARTIFACTS_DIR}/aikido-scan-details.json ]; then
+                                        # Extract counts from scan output
+                                        CRITICAL_COUNT=\$(grep -o "Critical: [0-9]*" ${ARTIFACTS_DIR}/aikido-scan-output.txt | grep -o "[0-9]*" || echo "0")
+                                        HIGH_COUNT=\$(grep -o "High: [0-9]*" ${ARTIFACTS_DIR}/aikido-scan-output.txt | grep -o "[0-9]*" || echo "0")
+                                        MEDIUM_COUNT=\$(grep -o "Medium: [0-9]*" ${ARTIFACTS_DIR}/aikido-scan-output.txt | grep -o "[0-9]*" || echo "0")
+                                        LOW_COUNT=\$(grep -o "Low: [0-9]*" ${ARTIFACTS_DIR}/aikido-scan-output.txt | grep -o "[0-9]*" || echo "0")
+
+                                        # Determine gate status
+                                        TOTAL_BLOCKING=\$((CRITICAL_COUNT + HIGH_COUNT))
+                                        if [ \$TOTAL_BLOCKING -gt 0 ]; then
+                                            GATE_CLASS="gate-failed"
+                                            GATE_MSG="❌ CI Gate Failed: \$TOTAL_BLOCKING blocking security issues found"
+                                        else
+                                            GATE_CLASS="gate-passed"
+                                            GATE_MSG="✅ CI Gate Passed: No blocking security issues"
+                                        fi
+
+                                        # Replace placeholders in HTML
+                                        sed -i "s|REPO_NAME_PLACEHOLDER|\${REPO_NAME}|g" ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed -i "s|COMMIT_PLACEHOLDER|${GIT_COMMIT}|g" ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed -i "s|BRANCH_PLACEHOLDER|${BRANCH_NAME}|g" ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed -i "s|BUILD_NUMBER_PLACEHOLDER|${BUILD_NUMBER}|g" ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed -i "s|SCAN_DATE_PLACEHOLDER|\$(date -u +%Y-%m-%dT%H:%M:%SZ)|g" ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed -i "s|SCAN_ID_PLACEHOLDER|\${SCAN_ID}|g" ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed -i "s|DIFF_URL_PLACEHOLDER|\${DIFF_URL}|g" ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed -i "s|GATE_STATUS_CLASS|\${GATE_CLASS}|g" ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed -i "s|GATE_STATUS_MESSAGE|\${GATE_MSG}|g" ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed -i "s|CRITICAL_COUNT|\${CRITICAL_COUNT}|g" ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed -i "s|HIGH_COUNT|\${HIGH_COUNT}|g" ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed -i "s|MEDIUM_COUNT|\${MEDIUM_COUNT}|g" ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed -i "s|LOW_COUNT|\${LOW_COUNT}|g" ${ARTIFACTS_DIR}/aikido-report.html
+
+                                        # Embed JSON data for JavaScript to parse
+                                        sed -i "s|SCAN_DATA_PLACEHOLDER|\$(cat ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo '{}')|g" ${ARTIFACTS_DIR}/aikido-report.html
+
+                                        echo "✅ HTML report generated: ${ARTIFACTS_DIR}/aikido-report.html"
+                                    fi
                                 fi
 
                                 set -e
@@ -217,7 +374,18 @@ spec:
                     // Archive security scan results
                     archiveArtifacts artifacts: 'build-artifacts/aikido-scan-output.txt', allowEmptyArchive: true
                     archiveArtifacts artifacts: 'build-artifacts/aikido-scan-details*.json', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'build-artifacts/aikido-report.html', allowEmptyArchive: true
                     archiveArtifacts artifacts: 'build-artifacts/build-info.txt', allowEmptyArchive: true
+
+                    // Publish HTML report
+                    publishHTML(target: [
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'build-artifacts',
+                        reportFiles: 'aikido-report.html',
+                        reportName: 'Aikido Security Report'
+                    ])
                 }
             }
         }
