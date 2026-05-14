@@ -152,15 +152,13 @@ spec:
                                 echo "Running Aikido scan-release for repository: \${REPO_NAME}, commit: ${GIT_COMMIT}"
 
                                 # Capture scan output to file with verbose output
-                                # Note: All scans run but won't fail the build due to 'set +e'
-                                set +e  # Don't fail on non-zero exit
+                                # Note: Scan will report findings but not fail the build (|| true)
                                 aikido-api-client scan-release "\${REPO_NAME}" "${GIT_COMMIT}" \
                                   --apikey "\${AIKIDO_CLIENT_API_KEY}" \
                                   --fail-on-sast-scan \
                                   --fail-on-secrets-scan \
-                                  --minimum-severity-level HIGH 2>&1 | tee ${ARTIFACTS_DIR}/aikido-scan-output.txt
+                                  --minimum-severity-level HIGH 2>&1 | tee ${ARTIFACTS_DIR}/aikido-scan-output.txt || true
                                 AIKIDO_EXIT_CODE=\${PIPESTATUS[0]}
-                                set -e  # Re-enable exit on error
 
                                 # Extract scan ID from output
                                 SCAN_ID=\$(grep "Aikido Security scan started" ${ARTIFACTS_DIR}/aikido-scan-output.txt | sed -n 's/.*id: \\([0-9]*\\).*/\\1/p')
