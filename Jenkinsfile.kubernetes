@@ -152,8 +152,7 @@ spec:
                     echo "🔒 Running Aikido security scan..."
                     script {
                         withCredentials([string(credentialsId: 'AIKIDO_CLIENT_API_KEY', variable: 'AIKIDO_CLIENT_API_KEY')]) {
-                            // Use returnStatus to capture exit code without failing the stage
-                            def exitCode = sh(returnStatus: true, script: """
+                            sh """
                                 # Install Node.js if not available (required for Aikido CLI)
                                 if ! command -v node &> /dev/null; then
                                     echo "Installing Node.js..."
@@ -174,13 +173,11 @@ spec:
 
                                 # Capture scan output to file with verbose output
                                 # Note: Scan will report findings but not fail the build
-                                set +e
-                                aikido-api-client scan-release "\${REPO_NAME}" "${GIT_COMMIT}" \
+                                (aikido-api-client scan-release "\${REPO_NAME}" "${GIT_COMMIT}" \
                                   --apikey "\${AIKIDO_CLIENT_API_KEY}" \
                                   --fail-on-sast-scan \
                                   --fail-on-secrets-scan \
-                                  --minimum-severity-level HIGH 2>&1 | tee ${ARTIFACTS_DIR}/aikido-scan-output.txt
-                                AIKIDO_EXIT_CODE=\$?
+                                  --minimum-severity-level HIGH 2>&1 | tee ${ARTIFACTS_DIR}/aikido-scan-output.txt) || true
 
                                 # Extract scan ID from output
                                 SCAN_ID=\$(grep "Aikido Security scan started" ${ARTIFACTS_DIR}/aikido-scan-output.txt | sed -n 's/.*id: \\([0-9]*\\).*/\\1/p')
@@ -199,8 +196,10 @@ spec:
                                     if command -v jq >/dev/null 2>&1; then
                                         cat ${ARTIFACTS_DIR}/aikido-scan-details.json | jq '.' > ${ARTIFACTS_DIR}/aikido-scan-details-formatted.json 2>/dev/null || true
                                     fi
+                                fi
 
-                                    # Generate HTML report from scan results
+                                # Generate HTML report from scan results
+                                if [ -n "\${SCAN_ID}" ]; then
                                     echo "Generating HTML report..."
                                     cat > ${ARTIFACTS_DIR}/aikido-report.html << 'HTMLEOF'
 <!DOCTYPE html>
@@ -361,7 +360,6 @@ HTMLEOF
                                 echo "Scan Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${ARTIFACTS_DIR}/build-info.txt
                                 echo "Repository: \${REPO_NAME}" >> ${ARTIFACTS_DIR}/build-info.txt
                                 echo "Commit: ${GIT_COMMIT}" >> ${ARTIFACTS_DIR}/build-info.txt
-                                echo "Exit Code: \${AIKIDO_EXIT_CODE}" >> ${ARTIFACTS_DIR}/build-info.txt
                                 echo "Scan ID: \${SCAN_ID:-N/A}" >> ${ARTIFACTS_DIR}/build-info.txt
                                 echo "Diff URL: \${DIFF_URL:-N/A}" >> ${ARTIFACTS_DIR}/build-info.txt
 
@@ -370,29 +368,11 @@ HTMLEOF
                                 cat ${ARTIFACTS_DIR}/aikido-scan-output.txt >> ${ARTIFACTS_DIR}/build-info.txt
                                 echo "" >> ${ARTIFACTS_DIR}/build-info.txt
 
-                                if [ \${AIKIDO_EXIT_CODE} -eq 0 ]; then
-                                    echo "✅ Aikido scan passed - no blocking issues found"
-                                elif [ \${AIKIDO_EXIT_CODE} -eq 10 ]; then
-                                    echo "⚠️ Aikido scan found blocking security issues (allowing build to continue)"
-                                    echo "View details: \${DIFF_URL}"
-                                    echo "Security report: build-artifacts/aikido-report.html"
-                                else
-                                    echo "⚠️ Aikido scan encountered an error (exit code: \${AIKIDO_EXIT_CODE}, allowing build to continue)"
-                                    echo "Check scan logs for details"
+                                echo "✅ Aikido Security Scan completed - check artifacts for detailed results"
+                                if [ -n "\${DIFF_URL}" ]; then
+                                    echo "View scan details: \${DIFF_URL}"
                                 fi
-
-                                # Note: Build continues regardless of security findings for informational purposes
-
-                                # Return 0 to indicate script completed (even if scan found issues)
-                                exit 0
-                                """)
-
-                            // Log the completion status
-                            if (exitCode == 0) {
-                                echo "✅ Aikido Security Scan completed successfully"
-                            } else {
-                                echo "⚠️ Aikido scan encountered issues (exit code: ${exitCode}), but build continues"
-                            }
+                            """
                         }
                     }
                 }
