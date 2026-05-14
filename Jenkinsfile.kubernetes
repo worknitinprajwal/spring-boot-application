@@ -158,7 +158,6 @@ spec:
                                   --fail-on-sast-scan \
                                   --fail-on-secrets-scan \
                                   --minimum-severity-level HIGH 2>&1 | tee ${ARTIFACTS_DIR}/aikido-scan-output.txt) || true
-                                AIKIDO_EXIT_CODE=\${PIPESTATUS[0]}
 
                                 # Extract scan ID from output
                                 SCAN_ID=\$(grep "Aikido Security scan started" ${ARTIFACTS_DIR}/aikido-scan-output.txt | sed -n 's/.*id: \\([0-9]*\\).*/\\1/p')
