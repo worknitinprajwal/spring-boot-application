@@ -150,19 +150,37 @@ spec:
 
                                 # Run Aikido scan-release (release gating)
                                 echo "Running Aikido scan-release for repository: \${REPO_NAME}, commit: ${GIT_COMMIT}"
+
+                                # Capture scan output to file
+                                set +e  # Don't fail on non-zero exit
                                 aikido-api-client scan-release "\${REPO_NAME}" "${GIT_COMMIT}" \
                                   --apikey "\${AIKIDO_CLIENT_API_KEY}" \
                                   --fail-on-sast-scan \
                                   --fail-on-secrets-scan \
                                   --minimum-severity-level HIGH \
-                                  || echo "⚠️ Aikido scan found issues"
+                                  > ${ARTIFACTS_DIR}/aikido-scan-output.txt 2>&1
+                                AIKIDO_EXIT_CODE=\$?
+                                set -e
 
                                 # Generate summary
                                 echo "=== Aikido Security Scan ===" >> ${ARTIFACTS_DIR}/build-info.txt
                                 echo "Scan Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${ARTIFACTS_DIR}/build-info.txt
                                 echo "Repository: \${REPO_NAME}" >> ${ARTIFACTS_DIR}/build-info.txt
                                 echo "Commit: ${GIT_COMMIT}" >> ${ARTIFACTS_DIR}/build-info.txt
-                                echo "✅ Security scan submitted to Aikido"
+                                echo "Exit Code: \${AIKIDO_EXIT_CODE}" >> ${ARTIFACTS_DIR}/build-info.txt
+
+                                # Copy scan output to summary
+                                echo "" >> ${ARTIFACTS_DIR}/build-info.txt
+                                cat ${ARTIFACTS_DIR}/aikido-scan-output.txt >> ${ARTIFACTS_DIR}/build-info.txt
+                                echo "" >> ${ARTIFACTS_DIR}/build-info.txt
+
+                                if [ \${AIKIDO_EXIT_CODE} -eq 0 ]; then
+                                    echo "✅ Aikido scan passed - no blocking issues found"
+                                elif [ \${AIKIDO_EXIT_CODE} -eq 10 ]; then
+                                    echo "⚠️ Aikido scan found blocking security issues"
+                                else
+                                    echo "❌ Aikido scan encountered an error"
+                                fi
                             """
                         }
                     }
@@ -170,7 +188,8 @@ spec:
             }
             post {
                 always {
-                    // Archive security scan info
+                    // Archive security scan results
+                    archiveArtifacts artifacts: 'build-artifacts/aikido-scan-output.txt', allowEmptyArchive: true
                     archiveArtifacts artifacts: 'build-artifacts/build-info.txt', allowEmptyArchive: true
                 }
             }
