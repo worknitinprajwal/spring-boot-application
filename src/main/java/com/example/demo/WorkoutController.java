@@ -58,4 +58,6 @@ public class WorkoutController {
     public ResponseEntity<String> health() {
         return ResponseEntity.ok("Fitness Tracker API is running!");
     }
+
+    INTENTIONAL_SYNTAX_ERROR_FOR_JIRA_TEST
 }

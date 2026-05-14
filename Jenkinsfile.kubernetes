@@ -525,7 +525,7 @@ JSONEOF
 
                                 # Replace placeholders
                                 sed -i "s|FITNESS_TRACKER_PLACEHOLDER|${JOB_NAME} #${BUILD_NUMBER}|g" ${ARTIFACTS_DIR}/jira-payload.json
-                                sed -i "s|Build failed. See console for details.|Build ${BUILD_NUMBER} on branch ${BRANCH_NAME} failed. Console: ${BUILD_URL}console|g" ${ARTIFACTS_DIR}/jira-payload.json
+                                sed -i "s|Build failed. See console for details.|Build ${BUILD_NUMBER} on branch ${BRANCH_NAME} failed.\\\\n\\\\nConsole Output: ${BUILD_URL}console\\\\nBuild Artifacts: ${BUILD_URL}artifact/|g" ${ARTIFACTS_DIR}/jira-payload.json
 
                                 # Create Jira ticket using REST API
                                 curl -X POST \
