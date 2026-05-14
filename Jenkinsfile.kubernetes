@@ -319,15 +319,6 @@ EOF
                     // Archive all artifacts
                     archiveArtifacts artifacts: 'build-artifacts/**/*', allowEmptyArchive: true
                     archiveArtifacts artifacts: 'test-reports/**/*', allowEmptyArchive: true
-
-                    // Publish HTML reports
-                    publishHTML([
-                        reportDir: 'build-artifacts',
-                        reportFiles: 'build-summary.html',
-                        reportName: 'Build Summary',
-                        keepAll: true,
-                        alwaysLinkToLastBuild: true
-                    ])
                 }
             }
         }
