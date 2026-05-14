@@ -375,8 +375,10 @@ HTMLEOF
                                 elif [ \${AIKIDO_EXIT_CODE} -eq 10 ]; then
                                     echo "⚠️ Aikido scan found blocking security issues"
                                     echo "View details: \${DIFF_URL}"
+                                    exit 10
                                 else
-                                    echo "❌ Aikido scan encountered an error"
+                                    echo "❌ Aikido scan encountered an error (exit code: \${AIKIDO_EXIT_CODE})"
+                                    exit \${AIKIDO_EXIT_CODE}
                                 fi
                             """
                         }
