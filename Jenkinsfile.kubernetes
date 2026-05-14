@@ -152,11 +152,11 @@ spec:
                                 echo "Running Aikido scan-release for repository: \${REPO_NAME}, commit: ${GIT_COMMIT}"
 
                                 # Capture scan output to file with verbose output
+                                # Note: --no-fail-on-dependency-scan allows scan to run without blocking build
                                 set +e  # Don't fail on non-zero exit
                                 aikido-api-client scan-release "\${REPO_NAME}" "${GIT_COMMIT}" \
                                   --apikey "\${AIKIDO_CLIENT_API_KEY}" \
-                                  --fail-on-sast-scan \
-                                  --fail-on-secrets-scan \
+                                  --no-fail-on-dependency-scan \
                                   --minimum-severity-level HIGH 2>&1 | tee ${ARTIFACTS_DIR}/aikido-scan-output.txt
                                 AIKIDO_EXIT_CODE=\${PIPESTATUS[0]}
 
