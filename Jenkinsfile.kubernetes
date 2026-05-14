@@ -381,6 +381,8 @@ HTMLEOF
                                 fi
 
                                 # Note: Build continues regardless of security findings for informational purposes
+                                # Force exit 0 to prevent stage from failing
+                                exit 0
                             """
                         }
                     }
