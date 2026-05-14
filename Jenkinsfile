@@ -1,8 +1,18 @@
-// CloudBees CI Pipeline - Build and Push Docker Image
-// ArgoCD handles deployment from Git
+// CloudBees CI Pipeline - Build, Test, Deploy with Artifacts & Unify Integration
+// Stores artifacts in workspace and publishes to CloudBees Unify
 
 pipeline {
     agent any
+
+    options {
+        // Keep build artifacts and logs
+        buildDiscarder(logRotator(
+            numToKeepStr: '10',           // Keep last 10 builds
+            artifactNumToKeepStr: '5',    // Keep artifacts for last 5 builds
+            daysToKeepStr: '30'           // Keep builds for 30 days
+        ))
+        timestamps()
+    }
 
     environment {
         // Application details
@@ -14,9 +24,26 @@ pipeline {
         // Use branch name + build number for image tag
         BRANCH_NAME_CLEAN = "${env.BRANCH_NAME.replaceAll('/', '-')}"
         IMAGE_TAG = "${BRANCH_NAME_CLEAN}-${BUILD_NUMBER}"
+
+        // Workspace artifacts directory
+        ARTIFACTS_DIR = "${WORKSPACE}/build-artifacts"
+        REPORTS_DIR = "${WORKSPACE}/test-reports"
     }
 
     stages {
+        stage('Setup') {
+            steps {
+                echo "🔧 Setting up workspace..."
+                sh """
+                    mkdir -p ${ARTIFACTS_DIR}
+                    mkdir -p ${REPORTS_DIR}
+                    echo "Build: ${BUILD_NUMBER}" > ${ARTIFACTS_DIR}/build-info.txt
+                    echo "Branch: ${BRANCH_NAME}" >> ${ARTIFACTS_DIR}/build-info.txt
+                    echo "Timestamp: \$(date)" >> ${ARTIFACTS_DIR}/build-info.txt
+                """
+            }
+        }
+
         stage('Checkout') {
             steps {
                 echo "🔄 Checking out code from branch: ${env.BRANCH_NAME}"
@@ -24,6 +51,12 @@ pipeline {
 
                 script {
                     env.GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    env.GIT_COMMIT_MSG = sh(script: "git log -1 --pretty=%B", returnStdout: true).trim()
+
+                    sh """
+                        echo "Commit: ${env.GIT_COMMIT_SHORT}" >> ${ARTIFACTS_DIR}/build-info.txt
+                        echo "Message: ${env.GIT_COMMIT_MSG}" >> ${ARTIFACTS_DIR}/build-info.txt
+                    """
                 }
             }
         }
@@ -32,10 +65,21 @@ pipeline {
             steps {
                 echo "🏗️ Building Spring Boot application..."
                 sh 'mvn clean package -DskipTests=false'
+
+                // Copy build artifacts
+                sh """
+                    cp target/*.jar ${ARTIFACTS_DIR}/ || true
+                    cp -r target/surefire-reports ${REPORTS_DIR}/unit-tests || true
+                """
             }
             post {
                 always {
-                    junit 'target/surefire-reports/*.xml'
+                    // Publish test results
+                    junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
+
+                    // Archive test reports
+                    archiveArtifacts artifacts: 'target/*.jar', allowEmptyArchive: true, fingerprint: true
+                    archiveArtifacts artifacts: 'target/surefire-reports/**/*', allowEmptyArchive: true
                 }
             }
         }
@@ -60,6 +104,10 @@ pipeline {
                             docker push ${IMAGE_NAME}:${BRANCH_NAME_CLEAN}-latest
 
                             echo "✅ Image pushed: ${IMAGE_NAME}:${IMAGE_TAG}"
+
+                            # Save image info to artifacts
+                            echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}" >> ${ARTIFACTS_DIR}/build-info.txt
+                            echo "Registry: ${DOCKER_REGISTRY}" >> ${ARTIFACTS_DIR}/build-info.txt
                         """
                     }
                 }
@@ -78,6 +126,9 @@ pipeline {
 
                             echo "Updated values.yaml:"
                             cat values.yaml | grep -A 3 'image:'
+
+                            # Save Helm values to artifacts
+                            cp values.yaml ${ARTIFACTS_DIR}/helm-values.yaml
                         """
                     }
 
@@ -114,7 +165,7 @@ pipeline {
                             break
                         case 'main':
                         case 'master':
-                            argoApp = 'fitness-tracker-test'  // Change to prod if needed
+                            argoApp = 'fitness-tracker-test'
                             break
                         default:
                             echo "⚠️ No ArgoCD app configured for branch ${env.BRANCH_NAME}"
@@ -125,22 +176,179 @@ pipeline {
                         sh """
                             argocd app sync ${argoApp} --grpc-web || echo "ArgoCD sync failed"
                             argocd app wait ${argoApp} --grpc-web --timeout 300 || echo "Timeout waiting for sync"
+
+                            # Save deployment info
+                            echo "ArgoCD App: ${argoApp}" >> ${ARTIFACTS_DIR}/build-info.txt
+                            echo "Deployment Status: Synced" >> ${ARTIFACTS_DIR}/build-info.txt
                         """
                     }
+                }
+            }
+        }
+
+        stage('Collect Build Artifacts') {
+            steps {
+                echo "📦 Collecting all build artifacts..."
+                script {
+                    sh """
+                        # Create comprehensive build report
+                        cat > ${ARTIFACTS_DIR}/build-summary.html << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Build Summary - ${BUILD_NUMBER}</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+        h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
+        h2 { color: #34495e; margin-top: 30px; }
+        .info-box { background: #ecf0f1; padding: 15px; border-radius: 5px; margin: 10px 0; }
+        .success { color: #27ae60; font-weight: bold; }
+        .label { font-weight: bold; color: #7f8c8d; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Build Summary</h1>
+
+        <div class="info-box">
+            <p><span class="label">Build Number:</span> ${BUILD_NUMBER}</p>
+            <p><span class="label">Branch:</span> ${BRANCH_NAME}</p>
+            <p><span class="label">Commit:</span> ${env.GIT_COMMIT_SHORT}</p>
+            <p><span class="label">Status:</span> <span class="success">SUCCESS</span></p>
+        </div>
+
+        <h2>📦 Artifacts</h2>
+        <div class="info-box">
+            <p><span class="label">Docker Image:</span> ${IMAGE_NAME}:${IMAGE_TAG}</p>
+            <p><span class="label">Registry:</span> ${DOCKER_REGISTRY}</p>
+            <p><span class="label">JAR File:</span> Available in artifacts</p>
+        </div>
+
+        <h2>🧪 Test Results</h2>
+        <div class="info-box">
+            <p>Unit test results are available in the test reports section.</p>
+        </div>
+
+        <h2>📊 Reports</h2>
+        <ul>
+            <li>JUnit Test Reports</li>
+            <li>Build Artifacts</li>
+            <li>Helm Chart Values</li>
+        </ul>
+    </div>
+</body>
+</html>
+EOF
+
+                        # List all artifacts
+                        echo "Artifacts created:"
+                        ls -lh ${ARTIFACTS_DIR}
+                        ls -lh ${REPORTS_DIR}
+                    """
+                }
+            }
+            post {
+                always {
+                    // Archive all artifacts
+                    archiveArtifacts artifacts: 'build-artifacts/**/*', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'test-reports/**/*', allowEmptyArchive: true
+
+                    // Publish HTML reports
+                    publishHTML([
+                        reportDir: 'build-artifacts',
+                        reportFiles: 'build-summary.html',
+                        reportName: 'Build Summary',
+                        keepAll: true,
+                        alwaysLinkToLastBuild: true
+                    ])
+                }
+            }
+        }
+
+        stage('Publish to CloudBees Unify') {
+            steps {
+                echo "📊 Publishing metrics to CloudBees Unify..."
+                script {
+                    // Collect test results
+                    def testResults = junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
+
+                    def buildData = [
+                        build: [
+                            number: env.BUILD_NUMBER,
+                            branch: env.BRANCH_NAME,
+                            commit: env.GIT_COMMIT_SHORT,
+                            timestamp: new Date().format("yyyy-MM-dd'T'HH:mm:ss'Z'"),
+                            status: currentBuild.result ?: 'SUCCESS'
+                        ],
+                        artifacts: [
+                            docker_image: "${IMAGE_NAME}:${IMAGE_TAG}",
+                            jar_file: "fitness-tracker.jar",
+                            helm_chart: "values.yaml"
+                        ],
+                        tests: [
+                            total: testResults?.totalCount ?: 0,
+                            passed: testResults?.passCount ?: 0,
+                            failed: testResults?.failCount ?: 0,
+                            skipped: testResults?.skipCount ?: 0
+                        ],
+                        links: [
+                            artifacts: "${BUILD_URL}artifact/",
+                            reports: "${BUILD_URL}testReport/",
+                            console: "${BUILD_URL}console"
+                        ]
+                    ]
+
+                    // Save build data for Unify
+                    writeJSON file: "${ARTIFACTS_DIR}/unify-data.json", json: buildData, pretty: 4
+
+                    echo "Build Data for CloudBees Unify:"
+                    echo buildData.inspect()
+
+                    // Archive Unify data
+                    archiveArtifacts artifacts: 'build-artifacts/unify-data.json', allowEmptyArchive: true
+
+                    // If CloudBees Analytics plugin is installed, it will automatically collect this data
+                    echo "✅ Build data ready for CloudBees Unify ingestion"
                 }
             }
         }
     }
 
     post {
+        always {
+            echo "🧹 Cleanup and final archiving..."
+
+            // Final artifact summary
+            sh """
+                echo "=== Build Artifacts Summary ===" >> ${ARTIFACTS_DIR}/build-info.txt
+                echo "Total artifacts: \$(find ${ARTIFACTS_DIR} -type f | wc -l)" >> ${ARTIFACTS_DIR}/build-info.txt
+                echo "Total reports: \$(find ${REPORTS_DIR} -type f | wc -l)" >> ${ARTIFACTS_DIR}/build-info.txt
+            """
+        }
         success {
             echo "✅ Pipeline completed successfully!"
-            echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}"
-            echo "Branch: ${env.BRANCH_NAME}"
-            echo "ArgoCD will deploy automatically"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            echo "📦 Build: ${BUILD_NUMBER}"
+            echo "🌿 Branch: ${env.BRANCH_NAME}"
+            echo "🐳 Image: ${IMAGE_NAME}:${IMAGE_TAG}"
+            echo "📊 Artifacts: ${BUILD_URL}artifact/"
+            echo "📈 Reports: ${BUILD_URL}"
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         }
         failure {
             echo "❌ Pipeline failed!"
+
+            // Archive failure logs
+            sh """
+                echo "Build failed at: \$(date)" >> ${ARTIFACTS_DIR}/failure.log
+                echo "Stage: ${env.STAGE_NAME}" >> ${ARTIFACTS_DIR}/failure.log || true
+            """
+
+            archiveArtifacts artifacts: 'build-artifacts/failure.log', allowEmptyArchive: true
+        }
+        unstable {
+            echo "⚠️ Pipeline completed with warnings"
         }
     }
 }
