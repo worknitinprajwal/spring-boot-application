@@ -138,7 +138,16 @@ spec:
                         )]) {
                             sh """
                                 # Create Docker config for Kaniko
-                                echo "{\\"auths\\":{\\"${DOCKER_REGISTRY}\\":{\\"auth\\":\\"\$(echo -n \${DOCKER_USER}:\${DOCKER_PASS} | base64)\\"}}}" > /kaniko/.docker/config.json
+                                cat > /kaniko/.docker/config.json <<EOF
+{
+  "auths": {
+    "${DOCKER_REGISTRY}": {
+      "username": "\${DOCKER_USER}",
+      "password": "\${DOCKER_PASS}"
+    }
+  }
+}
+EOF
 
                                 # Build and push with Kaniko
                                 /kaniko/executor \
