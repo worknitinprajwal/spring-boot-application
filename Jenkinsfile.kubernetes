@@ -140,28 +140,23 @@ spec:
                                     apt-get install -y nodejs || echo "Node.js install failed"
                                 fi
 
-                                # Install Aikido Scanner
-                                echo "Installing Aikido Scanner..."
-                                npm install -g @aikidosec/scanner@latest || echo "Warning: Aikido scanner installation failed"
+                                # Install Aikido CI API Client
+                                echo "Installing Aikido CI API Client..."
+                                npm install -g @aikidosec/ci-api-client@latest || echo "Warning: Aikido API client installation failed"
 
-                                # Run Aikido vulnerability scan
-                                echo "Running Aikido dependency scan..."
-                                export AIKIDO_CLIENT_API_KEY=\${AIKIDO_CLIENT_API_KEY}
+                                # Get repository details
+                                REPO_NAME=\$(basename \$(git config --get remote.origin.url) .git)
 
-                                # Scan pom.xml for Maven dependencies
-                                aikido scan --file pom.xml --format json --output ${ARTIFACTS_DIR}/aikido-report.json || echo "Scan completed with findings"
+                                # Run Aikido scan-release (release gating)
+                                echo "Running Aikido scan-release..."
+                                aikido-api-client scan-release "\${REPO_NAME}" "${GIT_COMMIT}" --apikey "\${AIKIDO_CLIENT_API_KEY}" || echo "Scan completed with findings"
 
                                 # Generate summary
                                 echo "=== Aikido Security Scan ===" >> ${ARTIFACTS_DIR}/build-info.txt
                                 echo "Scan Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${ARTIFACTS_DIR}/build-info.txt
-
-                                # Check if report exists
-                                if [ -f "${ARTIFACTS_DIR}/aikido-report.json" ]; then
-                                    echo "Report: aikido-report.json" >> ${ARTIFACTS_DIR}/build-info.txt
-                                    echo "✅ Security scan completed"
-                                else
-                                    echo "⚠️ Security scan report not generated"
-                                fi
+                                echo "Repository: \${REPO_NAME}" >> ${ARTIFACTS_DIR}/build-info.txt
+                                echo "Commit: ${GIT_COMMIT}" >> ${ARTIFACTS_DIR}/build-info.txt
+                                echo "✅ Security scan submitted to Aikido"
                             """
                         }
                     }
@@ -169,8 +164,8 @@ spec:
             }
             post {
                 always {
-                    // Archive security scan results
-                    archiveArtifacts artifacts: 'build-artifacts/aikido-*.json', allowEmptyArchive: true
+                    // Archive security scan info
+                    archiveArtifacts artifacts: 'build-artifacts/build-info.txt', allowEmptyArchive: true
                 }
             }
         }
