@@ -1,8 +1,8 @@
 replicaCount: 2
 
 image:
-  repository: your-dockerhub-username/fitness-tracker
-  tag: latest
+  repository: anuddeeph2/fitness-tracker
+  tag: develop-9
   pullPolicy: Always
 
 service:
