@@ -60,3 +60,4 @@ public class WorkoutController {
     }
 }
 // SYNTAX ERROR TO TEST JIRA
+INTENTIONAL_SYNTAX_ERROR
