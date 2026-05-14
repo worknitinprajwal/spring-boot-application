@@ -90,6 +90,9 @@ spec:
                     checkout scm
 
                     script {
+                        // Fix git ownership issue
+                        sh "git config --global --add safe.directory ${WORKSPACE}"
+
                         env.GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
                         env.GIT_COMMIT_MSG = sh(script: "git log -1 --pretty=%B", returnStdout: true).trim()
 
