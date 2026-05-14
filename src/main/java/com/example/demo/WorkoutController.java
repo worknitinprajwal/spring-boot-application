@@ -15,8 +15,6 @@ public class WorkoutController {
 
     @GetMapping
     public List<Workout> getAllWorkouts() {
-        // TEST: Intentional syntax error to test Jira integration
-        THIS IS A SYNTAX ERROR TO TEST JIRA TICKET CREATION
         return workoutRepository.findAll();
     }
 

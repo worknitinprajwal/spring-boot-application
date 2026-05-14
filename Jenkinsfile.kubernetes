@@ -499,38 +499,54 @@ EOF
                         echo "Creating Jira ticket for pipeline failure..."
                         withCredentials([string(credentialsId: 'jira-api-token', variable: 'JIRA_API_TOKEN')]) {
                             sh '''
+                                # Create JSON payload file
+                                cat > ${ARTIFACTS_DIR}/jira-payload.json << 'JSONEOF'
+{
+  "fields": {
+    "project": { "key": "UDEMO" },
+    "summary": "Pipeline Failed: FITNESS_TRACKER_PLACEHOLDER",
+    "description": {
+      "type": "doc",
+      "version": 1,
+      "content": [{
+        "type": "paragraph",
+        "content": [{
+          "type": "text",
+          "text": "Build failed. See console for details."
+        }]
+      }]
+    },
+    "issuetype": { "name": "Bug" },
+    "priority": { "name": "High" },
+    "labels": ["ci-cd", "pipeline-failure", "automated"]
+  }
+}
+JSONEOF
+
+                                # Replace placeholders
+                                sed -i "s|FITNESS_TRACKER_PLACEHOLDER|${JOB_NAME} #${BUILD_NUMBER}|g" ${ARTIFACTS_DIR}/jira-payload.json
+                                sed -i "s|Build failed. See console for details.|Build ${BUILD_NUMBER} on branch ${BRANCH_NAME} failed. Console: ${BUILD_URL}console|g" ${ARTIFACTS_DIR}/jira-payload.json
+
                                 # Create Jira ticket using REST API
                                 curl -X POST \
                                   -H "Content-Type: application/json" \
                                   -u "${JIRA_EMAIL}:${JIRA_API_TOKEN}" \
-                                  -d "{
-                                    \\"fields\\": {
-                                      \\"project\\": { \\"key\\": \\"${JIRA_PROJECT_KEY}\\" },
-                                      \\"summary\\": \\"Pipeline Failed: ${JOB_NAME} #${BUILD_NUMBER}\\",
-                                      \\"description\\": {
-                                        \\"type\\": \\"doc\\",
-                                        \\"version\\": 1,
-                                        \\"content\\": [{
-                                          \\"type\\": \\"paragraph\\",
-                                          \\"content\\": [{
-                                            \\"type\\": \\"text\\",
-                                            \\"text\\": \\"Build ${BUILD_NUMBER} on branch ${BRANCH_NAME} failed. Console: ${BUILD_URL}console\\"
-                                          }]
-                                        }]
-                                      },
-                                      \\"issuetype\\": { \\"name\\": \\"Bug\\" },
-                                      \\"priority\\": { \\"name\\": \\"High\\" },
-                                      \\"labels\\": [\\"ci-cd\\", \\"pipeline-failure\\", \\"automated\\"]
-                                    }
-                                  }" \
+                                  -d @${ARTIFACTS_DIR}/jira-payload.json \
                                   "${JIRA_SITE}/rest/api/3/issue" \
-                                  -o ${ARTIFACTS_DIR}/jira-response.json || echo "Failed to create Jira ticket"
+                                  -o ${ARTIFACTS_DIR}/jira-response.json \
+                                  -w "HTTP Status: %{http_code}\\n"
+
+                                # Show response for debugging
+                                echo "Jira API Response:"
+                                cat ${ARTIFACTS_DIR}/jira-response.json
 
                                 # Extract issue key
                                 if [ -f ${ARTIFACTS_DIR}/jira-response.json ]; then
                                     ISSUE_KEY=$(cat ${ARTIFACTS_DIR}/jira-response.json | grep -o '"key":"[^"]*"' | head -1 | cut -d'"' -f4)
                                     if [ -n "$ISSUE_KEY" ]; then
                                         echo "✅ Jira ticket created: ${JIRA_SITE}/browse/$ISSUE_KEY"
+                                    else
+                                        echo "⚠️ Could not extract issue key from response"
                                     fi
                                 fi
                             '''
