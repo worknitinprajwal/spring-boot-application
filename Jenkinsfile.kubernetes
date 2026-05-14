@@ -173,7 +173,7 @@ spec:
                                       > ${ARTIFACTS_DIR}/aikido-scan-details.json || echo "Failed to fetch details"
 
                                     # Pretty print JSON if jq available
-                                    if command -v jq &> /dev/null; then
+                                    if command -v jq >/dev/null 2>&1; then
                                         cat ${ARTIFACTS_DIR}/aikido-scan-details.json | jq '.' > ${ARTIFACTS_DIR}/aikido-scan-details-formatted.json 2>/dev/null || true
                                     fi
                                 fi
