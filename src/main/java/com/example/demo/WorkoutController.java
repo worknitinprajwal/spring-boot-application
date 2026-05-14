@@ -59,3 +59,4 @@ public class WorkoutController {
         return ResponseEntity.ok("Fitness Tracker API is running!");
     }
 }
+// SYNTAX ERROR TO TEST JIRA
