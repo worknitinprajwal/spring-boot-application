@@ -215,10 +215,9 @@ EOF
             }
         }
 
-        stage('Trigger ArgoCD Sync') {
+        stage('ArgoCD Deployment') {
             steps {
                 container('maven') {
-                    echo "🔄 Triggering ArgoCD sync..."
                     script {
                         // Determine which ArgoCD app to sync based on branch
                         def argoApp = ''
@@ -236,13 +235,15 @@ EOF
                         }
 
                         if (argoApp) {
-                            sh """
-                                argocd app sync ${argoApp} --grpc-web || echo "ArgoCD sync failed"
-                                argocd app wait ${argoApp} --grpc-web --timeout 300 || echo "Timeout waiting for sync"
+                            echo "🔄 ArgoCD will auto-sync application: ${argoApp}"
+                            echo "📦 Image deployed: ${IMAGE_NAME}:${IMAGE_TAG}"
+                            echo "⏱️  ArgoCD typically syncs within 3 minutes (default sync interval)"
 
+                            sh """
                                 # Save deployment info
                                 echo "ArgoCD App: ${argoApp}" >> ${ARTIFACTS_DIR}/build-info.txt
-                                echo "Deployment Status: Synced" >> ${ARTIFACTS_DIR}/build-info.txt
+                                echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}" >> ${ARTIFACTS_DIR}/build-info.txt
+                                echo "Helm values updated in git" >> ${ARTIFACTS_DIR}/build-info.txt
                             """
                         }
                     }
