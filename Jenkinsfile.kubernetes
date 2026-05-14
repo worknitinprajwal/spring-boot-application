@@ -15,29 +15,25 @@ metadata:
 spec:
   containers:
   - name: maven
-    image: maven:3.9-eclipse-temurin-17
+    image: maven:3.9-eclipse-temurin-21
+    command:
+    - sleep
+    args:
+    - 99d
+    tty: true
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:debug
     command:
     - sleep
     args:
     - 99d
     tty: true
     volumeMounts:
-    - name: docker-sock
-      mountPath: /var/run/docker.sock
-  - name: docker
-    image: docker:24
-    command:
-    - sleep
-    args:
-    - 99d
-    tty: true
-    volumeMounts:
-    - name: docker-sock
-      mountPath: /var/run/docker.sock
+    - name: docker-config
+      mountPath: /kaniko/.docker
   volumes:
-  - name: docker-sock
-    hostPath:
-      path: /var/run/docker.sock
+  - name: docker-config
+    emptyDir: {}
 """
         }
     }
@@ -132,8 +128,8 @@ spec:
 
         stage('Docker Build & Push') {
             steps {
-                container('docker') {
-                    echo "🐳 Building Docker image..."
+                container('kaniko') {
+                    echo "🐳 Building Docker image with Kaniko..."
                     script {
                         withCredentials([usernamePassword(
                             credentialsId: 'dockerhub-credentials',
@@ -141,23 +137,30 @@ spec:
                             passwordVariable: 'DOCKER_PASS'
                         )]) {
                             sh """
-                                echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin ${DOCKER_REGISTRY}
+                                # Create Docker config for Kaniko
+                                echo "{\\"auths\\":{\\"${DOCKER_REGISTRY}\\":{\\"auth\\":\\"\$(echo -n \${DOCKER_USER}:\${DOCKER_PASS} | base64)\\"}}}" > /kaniko/.docker/config.json
 
-                                docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-                                docker push ${IMAGE_NAME}:${IMAGE_TAG}
-
-                                # Push branch-specific latest tag
-                                docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${IMAGE_NAME}:${BRANCH_NAME_CLEAN}-latest
-                                docker push ${IMAGE_NAME}:${BRANCH_NAME_CLEAN}-latest
+                                # Build and push with Kaniko
+                                /kaniko/executor \
+                                  --context=\$(pwd) \
+                                  --dockerfile=Dockerfile \
+                                  --destination=${IMAGE_NAME}:${IMAGE_TAG} \
+                                  --destination=${IMAGE_NAME}:${BRANCH_NAME_CLEAN}-latest \
+                                  --cache=true \
+                                  --cache-repo=${IMAGE_NAME}/cache
 
                                 echo "✅ Image pushed: ${IMAGE_NAME}:${IMAGE_TAG}"
-
-                                # Save image info to artifacts
-                                echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}" >> ${ARTIFACTS_DIR}/build-info.txt
-                                echo "Registry: ${DOCKER_REGISTRY}" >> ${ARTIFACTS_DIR}/build-info.txt
                             """
+
+                            // Save image info to artifacts (run in maven container to avoid permission issues)
                         }
                     }
+                }
+                container('maven') {
+                    sh """
+                        echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}" >> ${ARTIFACTS_DIR}/build-info.txt
+                        echo "Registry: ${DOCKER_REGISTRY}" >> ${ARTIFACTS_DIR}/build-info.txt
+                    """
                 }
             }
         }
