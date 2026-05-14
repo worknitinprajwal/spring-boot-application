@@ -59,4 +59,3 @@ public class WorkoutController {
         return ResponseEntity.ok("Fitness Tracker API is running!");
     }
 }
-FINAL_TEST_SYNTAX_ERROR
