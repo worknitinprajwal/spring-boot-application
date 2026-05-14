@@ -11,7 +11,6 @@ pipeline {
             artifactNumToKeepStr: '5',    // Keep artifacts for last 5 builds
             daysToKeepStr: '30'           // Keep builds for 30 days
         ))
-        timestamps()
     }
 
     environment {
