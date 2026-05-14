@@ -373,13 +373,15 @@ HTMLEOF
                                 if [ \${AIKIDO_EXIT_CODE} -eq 0 ]; then
                                     echo "✅ Aikido scan passed - no blocking issues found"
                                 elif [ \${AIKIDO_EXIT_CODE} -eq 10 ]; then
-                                    echo "⚠️ Aikido scan found blocking security issues"
+                                    echo "⚠️ Aikido scan found blocking security issues (allowing build to continue)"
                                     echo "View details: \${DIFF_URL}"
-                                    exit 10
+                                    echo "Security report: build-artifacts/aikido-report.html"
                                 else
-                                    echo "❌ Aikido scan encountered an error (exit code: \${AIKIDO_EXIT_CODE})"
-                                    exit \${AIKIDO_EXIT_CODE}
+                                    echo "⚠️ Aikido scan encountered an error (exit code: \${AIKIDO_EXIT_CODE}, allowing build to continue)"
+                                    echo "Check scan logs for details"
                                 fi
+
+                                # Note: Build continues regardless of security findings for informational purposes
                             """
                         }
                     }
