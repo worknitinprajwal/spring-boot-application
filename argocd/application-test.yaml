@@ -10,7 +10,7 @@ spec:
 
   source:
     # Git repository containing Helm chart
-    repoURL: https://github.com/YOUR-USERNAME/fitness-tracker.git  # UPDATE THIS
+    repoURL: https://github.com/anuddeeph2/sample-spring-boot-app.git
     targetRevision: main  # Deploy from main branch for test
     path: k8s/helm-chart
     helm:

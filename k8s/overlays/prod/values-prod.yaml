@@ -1,0 +1,42 @@
+# Production Environment Values
+# Overrides for prod cluster deployment (igs)
+
+replicaCount: 3
+
+image:
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP  # ClusterIP for prod (same cluster as testing tools)
+  port: 8080
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: fitness-tracker.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+  requests:
+    cpu: 1000m
+    memory: 1Gi
+
+env:
+  - name: SPRING_PROFILES_ACTIVE
+    value: "prod"
+  - name: LOGGING_LEVEL_ROOT
+    value: "WARN"
+
+# Production-specific settings
+autoscaling:
+  enabled: false
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80

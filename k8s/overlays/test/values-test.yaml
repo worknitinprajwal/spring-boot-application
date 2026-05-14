@@ -1,0 +1,36 @@
+# Test Environment Values
+# Overrides for test cluster deployment
+
+replicaCount: 2
+
+image:
+  pullPolicy: Always
+
+service:
+  type: NodePort
+  port: 8080
+  nodePort: 30081  # Fixed NodePort for test
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: fitness-tracker-test.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+env:
+  - name: SPRING_PROFILES_ACTIVE
+    value: "test"
+  - name: LOGGING_LEVEL_ROOT
+    value: "INFO"
