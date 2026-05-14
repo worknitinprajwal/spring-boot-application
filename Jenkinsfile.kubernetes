@@ -317,34 +317,33 @@ HTMLEOF
 
                                     # Parse JSON and populate HTML report
                                     if [ -f ${ARTIFACTS_DIR}/aikido-scan-details.json ]; then
-                                        # Extract issue counts from JSON API response using jq
+                                        # Extract data directly from JSON using jq
                                         if command -v jq >/dev/null 2>&1; then
-                                            # Parse the short_human_readable_message to extract CRITICAL and HIGH counts
-                                            MSG=\$(jq -r '.outcome.short_human_readable_message // ""' ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null)
+                                            # Get the human readable summary message from Aikido
+                                            AIKIDO_MSG=\$(jq -r '.outcome.short_human_readable_message // "No message available"' ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null)
 
-                                            echo "DEBUG: Aikido message: \${MSG}"
+                                            # Get gate status and issue counts directly from JSON
+                                            GATE_PASSED=\$(jq -r '.gate_passed' ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null)
+                                            TOTAL_ISSUES=\$(jq -r '.new_issues_found // 0' ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null)
+                                            DEP_ISSUES=\$(jq -r '.new_dependency_issues_found // 0' ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null)
+                                            SAST_ISSUES=\$(jq -r '.new_sast_issues_found // 0' ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null)
+                                            IAC_ISSUES=\$(jq -r '.new_iac_issues_found // 0' ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null)
+                                            SECRET_ISSUES=\$(jq -r '.new_leaked_secret_issues_found // 0' ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null)
 
-                                            # Use portable sed patterns to extract counts
-                                            CRITICAL_COUNT=\$(echo "\${MSG}" | sed -n 's/.* \\([0-9][0-9]*\\) new CRITICAL.*/\\1/p')
-                                            HIGH_COUNT=\$(echo "\${MSG}" | sed -n 's/.* \\([0-9][0-9]*\\) new HIGH.*/\\1/p')
-                                            MEDIUM_COUNT=\$(echo "\${MSG}" | sed -n 's/.* \\([0-9][0-9]*\\) new MEDIUM.*/\\1/p')
-                                            LOW_COUNT=\$(echo "\${MSG}" | sed -n 's/.* \\([0-9][0-9]*\\) new LOW.*/\\1/p')
+                                            # Use Aikido's own message to display severity breakdown
+                                            # Set individual counts from the message if available
+                                            CRITICAL_COUNT=\$(echo "\${AIKIDO_MSG}" | grep -oE '[0-9]+ new CRITICAL' | grep -oE '[0-9]+' | head -1)
+                                            HIGH_COUNT=\$(echo "\${AIKIDO_MSG}" | grep -oE '[0-9]+ new HIGH' | grep -oE '[0-9]+' | head -1)
+                                            MEDIUM_COUNT=\$(echo "\${AIKIDO_MSG}" | grep -oE '[0-9]+ new MEDIUM' | grep -oE '[0-9]+' | head -1)
+                                            LOW_COUNT=\$(echo "\${AIKIDO_MSG}" | grep -oE '[0-9]+ new LOW' | grep -oE '[0-9]+' | head -1)
 
-                                            echo "DEBUG: Extracted counts - CRITICAL: \${CRITICAL_COUNT}, HIGH: \${HIGH_COUNT}, MEDIUM: \${MEDIUM_COUNT}, LOW: \${LOW_COUNT}"
-
-                                            # Default to 0 if not found
                                             CRITICAL_COUNT=\${CRITICAL_COUNT:-0}
                                             HIGH_COUNT=\${HIGH_COUNT:-0}
                                             MEDIUM_COUNT=\${MEDIUM_COUNT:-0}
                                             LOW_COUNT=\${LOW_COUNT:-0}
-
-                                            echo "DEBUG: Final counts - CRITICAL: \${CRITICAL_COUNT}, HIGH: \${HIGH_COUNT}, MEDIUM: \${MEDIUM_COUNT}, LOW: \${LOW_COUNT}"
-
-                                            # Get gate status and total issues
-                                            GATE_PASSED=\$(jq -r '.gate_passed // true' ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null)
-                                            TOTAL_ISSUES=\$(jq -r '.new_issues_found // 0' ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo "0")
                                         else
                                             # Fallback without jq
+                                            AIKIDO_MSG="jq not available"
                                             CRITICAL_COUNT=0
                                             HIGH_COUNT=0
                                             MEDIUM_COUNT=0
@@ -353,35 +352,35 @@ HTMLEOF
                                             TOTAL_ISSUES=0
                                         fi
 
-                                        # Determine gate status from API response
+                                        # Determine gate status display
                                         if [ "\${GATE_PASSED}" = "false" ]; then
                                             GATE_CLASS="gate-failed"
-                                            GATE_MSG="❌ CI Gate Failed: \${TOTAL_ISSUES} security issues found (\${CRITICAL_COUNT} CRITICAL, \${HIGH_COUNT} HIGH) - allowing build to continue for informational purposes"
+                                            GATE_MSG="\${AIKIDO_MSG}"
                                         else
                                             GATE_CLASS="gate-passed"
                                             GATE_MSG="✅ CI Gate Passed: No blocking security issues"
                                         fi
 
-                                        # Replace placeholders in HTML
-                                        echo "DEBUG: Before sed replacements - CRITICAL=\${CRITICAL_COUNT}, HIGH=\${HIGH_COUNT}"
+                                        # Replace placeholders using a single comprehensive sed command
+                                        echo "Populating HTML report with: CRITICAL=\${CRITICAL_COUNT}, HIGH=\${HIGH_COUNT}, MEDIUM=\${MEDIUM_COUNT}, LOW=\${LOW_COUNT}"
 
-                                        # Use temporary file for sed (portable across Linux/macOS)
-                                        sed "s|REPO_NAME_PLACEHOLDER|\${REPO_NAME}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed "s|COMMIT_PLACEHOLDER|${GIT_COMMIT}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed "s|BRANCH_PLACEHOLDER|${BRANCH_NAME}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed "s|BUILD_NUMBER_PLACEHOLDER|${BUILD_NUMBER}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed "s|SCAN_DATE_PLACEHOLDER|\$(date -u +%Y-%m-%dT%H:%M:%SZ)|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed "s|SCAN_ID_PLACEHOLDER|\${SCAN_ID}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed "s|DIFF_URL_PLACEHOLDER|\${DIFF_URL}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed "s|GATE_STATUS_CLASS|\${GATE_CLASS}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed "s|GATE_STATUS_MESSAGE|\${GATE_MSG}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed "s|CRITICAL_COUNT|\${CRITICAL_COUNT}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed "s|HIGH_COUNT|\${HIGH_COUNT}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed "s|MEDIUM_COUNT|\${MEDIUM_COUNT}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed "s|LOW_COUNT|\${LOW_COUNT}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
+                                        # Do all replacements in a single pass
+                                        sed -e "s|REPO_NAME_PLACEHOLDER|\${REPO_NAME}|g" \
+                                            -e "s|COMMIT_PLACEHOLDER|${GIT_COMMIT}|g" \
+                                            -e "s|BRANCH_PLACEHOLDER|${BRANCH_NAME}|g" \
+                                            -e "s|BUILD_NUMBER_PLACEHOLDER|${BUILD_NUMBER}|g" \
+                                            -e "s|SCAN_DATE_PLACEHOLDER|\$(date -u +%Y-%m-%dT%H:%M:%SZ)|g" \
+                                            -e "s|SCAN_ID_PLACEHOLDER|\${SCAN_ID}|g" \
+                                            -e "s|DIFF_URL_PLACEHOLDER|\${DIFF_URL}|g" \
+                                            -e "s|GATE_STATUS_CLASS|\${GATE_CLASS}|g" \
+                                            -e "s|GATE_STATUS_MESSAGE|\${GATE_MSG}|g" \
+                                            -e "s|CRITICAL_COUNT|\${CRITICAL_COUNT}|g" \
+                                            -e "s|HIGH_COUNT|\${HIGH_COUNT}|g" \
+                                            -e "s|MEDIUM_COUNT|\${MEDIUM_COUNT}|g" \
+                                            -e "s|LOW_COUNT|\${LOW_COUNT}|g" \
+                                            ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp
 
-                                        echo "DEBUG: After sed replacements, checking file..."
-                                        grep -E "(CRITICAL|HIGH|MEDIUM|LOW)" ${ARTIFACTS_DIR}/aikido-report.html | head -20
+                                        mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
 
                                         # Embed JSON data for JavaScript to parse
                                         sed -i "s|SCAN_DATA_PLACEHOLDER|\$(cat ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo '{}')|g" ${ARTIFACTS_DIR}/aikido-report.html
