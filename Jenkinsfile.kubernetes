@@ -85,17 +85,19 @@ spec:
 
         stage('Checkout') {
             steps {
-                echo "🔄 Checking out code from branch: ${env.BRANCH_NAME}"
-                checkout scm
+                container('maven') {
+                    echo "🔄 Checking out code from branch: ${env.BRANCH_NAME}"
+                    checkout scm
 
-                script {
-                    env.GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                    env.GIT_COMMIT_MSG = sh(script: "git log -1 --pretty=%B", returnStdout: true).trim()
+                    script {
+                        env.GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                        env.GIT_COMMIT_MSG = sh(script: "git log -1 --pretty=%B", returnStdout: true).trim()
 
-                    sh """
-                        echo "Commit: ${env.GIT_COMMIT_SHORT}" >> ${ARTIFACTS_DIR}/build-info.txt
-                        echo "Message: ${env.GIT_COMMIT_MSG}" >> ${ARTIFACTS_DIR}/build-info.txt
-                    """
+                        sh """
+                            echo "Commit: ${env.GIT_COMMIT_SHORT}" >> ${ARTIFACTS_DIR}/build-info.txt
+                            echo "Message: ${env.GIT_COMMIT_MSG}" >> ${ARTIFACTS_DIR}/build-info.txt
+                        """
+                    }
                 }
             }
         }
@@ -368,14 +370,16 @@ EOF
 
     post {
         always {
-            echo "🧹 Cleanup and final archiving..."
+            container('maven') {
+                echo "🧹 Cleanup and final archiving..."
 
-            // Final artifact summary
-            sh """
-                echo "=== Build Artifacts Summary ===" >> ${ARTIFACTS_DIR}/build-info.txt
-                echo "Total artifacts: \$(find ${ARTIFACTS_DIR} -type f | wc -l)" >> ${ARTIFACTS_DIR}/build-info.txt
-                echo "Total reports: \$(find ${REPORTS_DIR} -type f | wc -l)" >> ${ARTIFACTS_DIR}/build-info.txt
-            """
+                // Final artifact summary
+                sh """
+                    echo "=== Build Artifacts Summary ===" >> ${ARTIFACTS_DIR}/build-info.txt
+                    echo "Total artifacts: \$(find ${ARTIFACTS_DIR} -type f | wc -l)" >> ${ARTIFACTS_DIR}/build-info.txt
+                    echo "Total reports: \$(find ${REPORTS_DIR} -type f | wc -l)" >> ${ARTIFACTS_DIR}/build-info.txt
+                """
+            }
         }
         success {
             echo "✅ Pipeline completed successfully!"
@@ -388,15 +392,17 @@ EOF
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         }
         failure {
-            echo "❌ Pipeline failed!"
+            container('maven') {
+                echo "❌ Pipeline failed!"
 
-            // Archive failure logs
-            sh """
-                echo "Build failed at: \$(date)" >> ${ARTIFACTS_DIR}/failure.log
-                echo "Stage: ${env.STAGE_NAME}" >> ${ARTIFACTS_DIR}/failure.log || true
-            """
+                // Archive failure logs
+                sh """
+                    echo "Build failed at: \$(date)" >> ${ARTIFACTS_DIR}/failure.log
+                    echo "Stage: ${env.STAGE_NAME}" >> ${ARTIFACTS_DIR}/failure.log || true
+                """
 
-            archiveArtifacts artifacts: 'build-artifacts/failure.log', allowEmptyArchive: true
+                archiveArtifacts artifacts: 'build-artifacts/failure.log', allowEmptyArchive: true
+            }
         }
         unstable {
             echo "⚠️ Pipeline completed with warnings"
