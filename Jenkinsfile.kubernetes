@@ -21,6 +21,16 @@ spec:
     args:
     - 99d
     tty: true
+    resources:
+      requests:
+        memory: "1Gi"
+        cpu: "500m"
+      limits:
+        memory: "2Gi"
+        cpu: "1000m"
+    volumeMounts:
+    - name: maven-cache
+      mountPath: /root/.m2
   - name: kaniko
     image: gcr.io/kaniko-project/executor:debug
     command:
@@ -32,6 +42,8 @@ spec:
     - name: docker-config
       mountPath: /kaniko/.docker
   volumes:
+  - name: maven-cache
+    emptyDir: {}
   - name: docker-config
     emptyDir: {}
 """
@@ -107,10 +119,13 @@ spec:
         }
 
         stage('Build & Test') {
+            options {
+                timeout(time: 15, unit: 'MINUTES')
+            }
             steps {
                 container('maven') {
                     echo "🏗️ Building Spring Boot application..."
-                    sh 'mvn clean package -DskipTests=false'
+                    sh 'mvn -B clean package -DskipTests=false -Dmaven.repo.local=/root/.m2/repository'
 
                     // Copy build artifacts
                     sh """
