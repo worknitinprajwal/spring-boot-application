@@ -61,6 +61,11 @@ spec:
         // Workspace artifacts directory
         ARTIFACTS_DIR = "${WORKSPACE}/build-artifacts"
         REPORTS_DIR = "${WORKSPACE}/test-reports"
+
+        // Jira configuration
+        JIRA_SITE = 'https://cloudbees.atlassian.net'
+        JIRA_PROJECT_KEY = 'UDEMO'
+        JIRA_EMAIL = 'analla@cloudbees.com'
     }
 
     stages {
@@ -487,6 +492,53 @@ EOF
                 """
 
                 archiveArtifacts artifacts: 'build-artifacts/failure.log', allowEmptyArchive: true
+
+                // Create Jira ticket for pipeline failure
+                script {
+                    try {
+                        echo "Creating Jira ticket for pipeline failure..."
+                        withCredentials([string(credentialsId: 'jira-api-token', variable: 'JIRA_API_TOKEN')]) {
+                            sh '''
+                                # Create Jira ticket using REST API
+                                curl -X POST \
+                                  -H "Content-Type: application/json" \
+                                  -u "${JIRA_EMAIL}:${JIRA_API_TOKEN}" \
+                                  -d "{
+                                    \\"fields\\": {
+                                      \\"project\\": { \\"key\\": \\"${JIRA_PROJECT_KEY}\\" },
+                                      \\"summary\\": \\"Pipeline Failed: ${JOB_NAME} #${BUILD_NUMBER}\\",
+                                      \\"description\\": {
+                                        \\"type\\": \\"doc\\",
+                                        \\"version\\": 1,
+                                        \\"content\\": [{
+                                          \\"type\\": \\"paragraph\\",
+                                          \\"content\\": [{
+                                            \\"type\\": \\"text\\",
+                                            \\"text\\": \\"Build ${BUILD_NUMBER} on branch ${BRANCH_NAME} failed. Console: ${BUILD_URL}console\\"
+                                          }]
+                                        }]
+                                      },
+                                      \\"issuetype\\": { \\"name\\": \\"Bug\\" },
+                                      \\"priority\\": { \\"name\\": \\"High\\" },
+                                      \\"labels\\": [\\"ci-cd\\", \\"pipeline-failure\\", \\"automated\\"]
+                                    }
+                                  }" \
+                                  "${JIRA_SITE}/rest/api/3/issue" \
+                                  -o ${ARTIFACTS_DIR}/jira-response.json || echo "Failed to create Jira ticket"
+
+                                # Extract issue key
+                                if [ -f ${ARTIFACTS_DIR}/jira-response.json ]; then
+                                    ISSUE_KEY=$(cat ${ARTIFACTS_DIR}/jira-response.json | grep -o '"key":"[^"]*"' | head -1 | cut -d'"' -f4)
+                                    if [ -n "$ISSUE_KEY" ]; then
+                                        echo "✅ Jira ticket created: ${JIRA_SITE}/browse/$ISSUE_KEY"
+                                    fi
+                                fi
+                            '''
+                        }
+                    } catch (Exception e) {
+                        echo "⚠️ Failed to create Jira ticket: ${e.message}"
+                    }
+                }
             }
         }
         unstable {
