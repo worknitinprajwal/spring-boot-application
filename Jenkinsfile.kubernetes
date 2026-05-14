@@ -322,17 +322,23 @@ HTMLEOF
                                             # Parse the short_human_readable_message to extract CRITICAL and HIGH counts
                                             MSG=\$(jq -r '.outcome.short_human_readable_message // ""' ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null)
 
+                                            echo "DEBUG: Aikido message: \${MSG}"
+
                                             # Use portable sed patterns to extract counts
                                             CRITICAL_COUNT=\$(echo "\${MSG}" | sed -n 's/.* \\([0-9][0-9]*\\) new CRITICAL.*/\\1/p')
                                             HIGH_COUNT=\$(echo "\${MSG}" | sed -n 's/.* \\([0-9][0-9]*\\) new HIGH.*/\\1/p')
                                             MEDIUM_COUNT=\$(echo "\${MSG}" | sed -n 's/.* \\([0-9][0-9]*\\) new MEDIUM.*/\\1/p')
                                             LOW_COUNT=\$(echo "\${MSG}" | sed -n 's/.* \\([0-9][0-9]*\\) new LOW.*/\\1/p')
 
+                                            echo "DEBUG: Extracted counts - CRITICAL: \${CRITICAL_COUNT}, HIGH: \${HIGH_COUNT}, MEDIUM: \${MEDIUM_COUNT}, LOW: \${LOW_COUNT}"
+
                                             # Default to 0 if not found
                                             CRITICAL_COUNT=\${CRITICAL_COUNT:-0}
                                             HIGH_COUNT=\${HIGH_COUNT:-0}
                                             MEDIUM_COUNT=\${MEDIUM_COUNT:-0}
                                             LOW_COUNT=\${LOW_COUNT:-0}
+
+                                            echo "DEBUG: Final counts - CRITICAL: \${CRITICAL_COUNT}, HIGH: \${HIGH_COUNT}, MEDIUM: \${MEDIUM_COUNT}, LOW: \${LOW_COUNT}"
 
                                             # Get gate status and total issues
                                             GATE_PASSED=\$(jq -r '.gate_passed // true' ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null)
