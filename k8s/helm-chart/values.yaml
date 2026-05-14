@@ -3,9 +3,9 @@ replicaCount: 2
 image:
   repository: anuddeeph2/fitness-tracker
 <<<<<<< HEAD
-  tag: main-17
+  tag: main-22
 =======
-  tag: develop-16
+  tag: main-22
 >>>>>>> develop
   pullPolicy: Always
 
