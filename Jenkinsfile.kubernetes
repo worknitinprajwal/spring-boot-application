@@ -64,7 +64,7 @@ spec:
 
         // Jira configuration
         JIRA_SITE = 'https://cloudbees.atlassian.net'
-        JIRA_PROJECT_KEY = 'UDEMO'
+        JIRA_PROJECT_KEY = 'CBDEMO'
         JIRA_EMAIL = 'analla@cloudbees.com'
     }
 
@@ -503,7 +503,7 @@ EOF
                                 cat > ${ARTIFACTS_DIR}/jira-payload.json << 'JSONEOF'
 {
   "fields": {
-    "project": { "key": "UDEMO" },
+    "project": { "key": "CBDEMO" },
     "summary": "Pipeline Failed: FITNESS_TRACKER_PLACEHOLDER",
     "description": {
       "type": "doc",
