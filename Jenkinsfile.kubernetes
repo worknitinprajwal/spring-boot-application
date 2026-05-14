@@ -173,11 +173,14 @@ spec:
 
                                 # Capture scan output to file with verbose output
                                 # Note: Scan will report findings but not fail the build
-                                (aikido-api-client scan-release "\${REPO_NAME}" "${GIT_COMMIT}" \
+                                set +e
+                                aikido-api-client scan-release "\${REPO_NAME}" "${GIT_COMMIT}" \
                                   --apikey "\${AIKIDO_CLIENT_API_KEY}" \
                                   --fail-on-sast-scan \
                                   --fail-on-secrets-scan \
-                                  --minimum-severity-level HIGH 2>&1 | tee ${ARTIFACTS_DIR}/aikido-scan-output.txt) || true
+                                  --minimum-severity-level HIGH 2>&1 | tee ${ARTIFACTS_DIR}/aikido-scan-output.txt
+                                AIKIDO_EXIT_CODE=\$?
+                                set -e
 
                                 # Extract scan ID from output
                                 SCAN_ID=\$(grep "Aikido Security scan started" ${ARTIFACTS_DIR}/aikido-scan-output.txt | sed -n 's/.*id: \\([0-9]*\\).*/\\1/p')
@@ -352,8 +355,6 @@ HTMLEOF
                                         echo "✅ HTML report generated: ${ARTIFACTS_DIR}/aikido-report.html"
                                     fi
                                 fi
-
-                                set -e
 
                                 # Generate summary
                                 echo "=== Aikido Security Scan ===" >> ${ARTIFACTS_DIR}/build-info.txt
