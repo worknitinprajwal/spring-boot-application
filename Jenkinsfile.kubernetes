@@ -516,7 +516,7 @@ EOF
         }]
       }]
     },
-    "issuetype": { "name": "Bug" },
+    "issuetype": { "name": "Task" },
     "priority": { "name": "High" },
     "labels": ["ci-cd", "pipeline-failure", "automated"]
   }
