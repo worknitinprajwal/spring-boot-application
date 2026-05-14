@@ -286,12 +286,10 @@ spec:
             scanData.issues.forEach(issue => {
                 const row = document.createElement('tr');
                 const severity = issue.severity || 'unknown';
-                row.innerHTML = \`
-                    <td><span class="severity-badge severity-\${severity.toLowerCase()}">\${severity.toUpperCase()}</span></td>
-                    <td>\${issue.type || 'Security Issue'}</td>
-                    <td class="issue-id">\${issue.id || issue.cve || 'N/A'}</td>
-                    <td>\${issue.component || issue.package || 'N/A'}</td>
-                \`;
+                row.innerHTML = '<td><span class="severity-badge severity-' + severity.toLowerCase() + '">' + severity.toUpperCase() + '</span></td>' +
+                    '<td>' + (issue.type || 'Security Issue') + '</td>' +
+                    '<td class="issue-id">' + (issue.id || issue.cve || 'N/A') + '</td>' +
+                    '<td>' + (issue.component || issue.package || 'N/A') + '</td>';
                 issuesBody.appendChild(row);
             });
         }
