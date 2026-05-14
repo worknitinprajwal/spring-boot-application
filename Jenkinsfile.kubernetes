@@ -363,19 +363,25 @@ HTMLEOF
                                         fi
 
                                         # Replace placeholders in HTML
-                                        sed -i "s|REPO_NAME_PLACEHOLDER|\${REPO_NAME}|g" ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed -i "s|COMMIT_PLACEHOLDER|${GIT_COMMIT}|g" ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed -i "s|BRANCH_PLACEHOLDER|${BRANCH_NAME}|g" ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed -i "s|BUILD_NUMBER_PLACEHOLDER|${BUILD_NUMBER}|g" ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed -i "s|SCAN_DATE_PLACEHOLDER|\$(date -u +%Y-%m-%dT%H:%M:%SZ)|g" ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed -i "s|SCAN_ID_PLACEHOLDER|\${SCAN_ID}|g" ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed -i "s|DIFF_URL_PLACEHOLDER|\${DIFF_URL}|g" ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed -i "s|GATE_STATUS_CLASS|\${GATE_CLASS}|g" ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed -i "s|GATE_STATUS_MESSAGE|\${GATE_MSG}|g" ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed -i "s|CRITICAL_COUNT|\${CRITICAL_COUNT}|g" ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed -i "s|HIGH_COUNT|\${HIGH_COUNT}|g" ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed -i "s|MEDIUM_COUNT|\${MEDIUM_COUNT}|g" ${ARTIFACTS_DIR}/aikido-report.html
-                                        sed -i "s|LOW_COUNT|\${LOW_COUNT}|g" ${ARTIFACTS_DIR}/aikido-report.html
+                                        echo "DEBUG: Before sed replacements - CRITICAL=\${CRITICAL_COUNT}, HIGH=\${HIGH_COUNT}"
+
+                                        # Use temporary file for sed (portable across Linux/macOS)
+                                        sed "s|REPO_NAME_PLACEHOLDER|\${REPO_NAME}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed "s|COMMIT_PLACEHOLDER|${GIT_COMMIT}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed "s|BRANCH_PLACEHOLDER|${BRANCH_NAME}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed "s|BUILD_NUMBER_PLACEHOLDER|${BUILD_NUMBER}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed "s|SCAN_DATE_PLACEHOLDER|\$(date -u +%Y-%m-%dT%H:%M:%SZ)|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed "s|SCAN_ID_PLACEHOLDER|\${SCAN_ID}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed "s|DIFF_URL_PLACEHOLDER|\${DIFF_URL}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed "s|GATE_STATUS_CLASS|\${GATE_CLASS}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed "s|GATE_STATUS_MESSAGE|\${GATE_MSG}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed "s|CRITICAL_COUNT|\${CRITICAL_COUNT}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed "s|HIGH_COUNT|\${HIGH_COUNT}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed "s|MEDIUM_COUNT|\${MEDIUM_COUNT}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed "s|LOW_COUNT|\${LOW_COUNT}|g" ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp && mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
+
+                                        echo "DEBUG: After sed replacements, checking file..."
+                                        grep -E "(CRITICAL|HIGH|MEDIUM|LOW)" ${ARTIFACTS_DIR}/aikido-report.html | head -20
 
                                         # Embed JSON data for JavaScript to parse
                                         sed -i "s|SCAN_DATA_PLACEHOLDER|\$(cat ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo '{}')|g" ${ARTIFACTS_DIR}/aikido-report.html
