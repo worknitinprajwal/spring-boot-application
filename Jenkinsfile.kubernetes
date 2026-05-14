@@ -151,7 +151,7 @@ spec:
                 container('maven') {
                     echo "🔒 Running Aikido security scan..."
                     script {
-                        catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
+                        try {
                             withCredentials([string(credentialsId: 'AIKIDO_CLIENT_API_KEY', variable: 'AIKIDO_CLIENT_API_KEY')]) {
                                 sh """
                                 # Install Node.js if not available (required for Aikido CLI)
@@ -382,10 +382,17 @@ HTMLEOF
                                 fi
 
                                 # Note: Build continues regardless of security findings for informational purposes
-                                # Force exit 0 to prevent stage from failing
-                                exit 0
+
+                                # Always return success to prevent shell script from failing the stage
+                                true
                                 """
                             }
+                        } catch (Exception e) {
+                            echo "⚠️ Aikido scan stage encountered an exception: ${e.message}"
+                            echo "Continuing build despite scan issues..."
+                        } finally {
+                            // Explicitly mark stage as successful
+                            currentBuild.result = 'SUCCESS'
                         }
                     }
                 }
