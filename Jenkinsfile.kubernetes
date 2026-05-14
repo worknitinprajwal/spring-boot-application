@@ -327,48 +327,35 @@ EOF
             steps {
                 container('maven') {
                     echo "📊 Publishing metrics to CloudBees Unify..."
-                    script {
-                        // Collect test results
-                        def testResults = junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
+                    sh """
+                        # Create build data JSON for Unify
+                        cat > ${ARTIFACTS_DIR}/unify-data.json <<EOF
+{
+  "build": {
+    "number": "${BUILD_NUMBER}",
+    "branch": "${BRANCH_NAME}",
+    "commit": "${GIT_COMMIT_SHORT}",
+    "timestamp": "\$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+    "status": "SUCCESS"
+  },
+  "artifacts": {
+    "docker_image": "${IMAGE_NAME}:${IMAGE_TAG}",
+    "jar_file": "fitness-tracker.jar",
+    "helm_chart": "values.yaml"
+  },
+  "links": {
+    "artifacts": "${BUILD_URL}artifact/",
+    "console": "${BUILD_URL}console"
+  }
+}
+EOF
 
-                        def buildData = [
-                            build: [
-                                number: env.BUILD_NUMBER,
-                                branch: env.BRANCH_NAME,
-                                commit: env.GIT_COMMIT_SHORT,
-                                timestamp: new Date().format("yyyy-MM-dd'T'HH:mm:ss'Z'"),
-                                status: currentBuild.result ?: 'SUCCESS'
-                            ],
-                            artifacts: [
-                                docker_image: "${IMAGE_NAME}:${IMAGE_TAG}",
-                                jar_file: "fitness-tracker.jar",
-                                helm_chart: "values.yaml"
-                            ],
-                            tests: [
-                                total: testResults?.totalCount ?: 0,
-                                passed: testResults?.passCount ?: 0,
-                                failed: testResults?.failCount ?: 0,
-                                skipped: testResults?.skipCount ?: 0
-                            ],
-                            links: [
-                                artifacts: "${BUILD_URL}artifact/",
-                                reports: "${BUILD_URL}testReport/",
-                                console: "${BUILD_URL}console"
-                            ]
-                        ]
-
-                        // Save build data for Unify
-                        writeJSON file: "${ARTIFACTS_DIR}/unify-data.json", json: buildData, pretty: 4
-
-                        echo "Build Data for CloudBees Unify:"
-                        echo buildData.inspect()
-
-                        // Archive Unify data
-                        archiveArtifacts artifacts: 'build-artifacts/unify-data.json', allowEmptyArchive: true
-
-                        // If CloudBees Analytics plugin is installed, it will automatically collect this data
                         echo "✅ Build data ready for CloudBees Unify ingestion"
-                    }
+                        cat ${ARTIFACTS_DIR}/unify-data.json
+                    """
+
+                    // Archive Unify data
+                    archiveArtifacts artifacts: 'build-artifacts/unify-data.json', allowEmptyArchive: true
                 }
             }
         }
