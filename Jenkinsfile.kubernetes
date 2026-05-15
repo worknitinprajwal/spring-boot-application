@@ -866,15 +866,18 @@ NR>1 {
     connections[count]=connect
 
     # Success/failure tracking
-    if(\$6=="true") success++
+    # Column 8 is the success field (true/false)
+    if(\$8=="true") success++
     else {
         failed++
-        failures[\$5]=(\$5 in failures) ? failures[\$5]+1 : 1
+        # Column 4 is responseCode, column 5 is responseMessage
+        failures[\$4]=(\$4 in failures) ? failures[\$4]+1 : 1
     }
 
     # Throughput calculation (bytes)
-    bytes_sent+=int(\$7)
-    bytes_received+=int(\$6)
+    # Column 9 is bytes sent, column 10 is bytes received
+    bytes_sent+=int(\$10)
+    bytes_received+=int(\$9)
 }
 END {
     if(count==0) {
@@ -1029,22 +1032,23 @@ AWKEOF
                                     set +e  # Don't fail immediately on ZAP errors (it returns non-zero on findings)
 
                                     echo "🔐 Running ZAP baseline scan against \${APP_URL}..."
-                                    mkdir -p /zap/wrk/reports
+                                    mkdir -p reports
 
                                     # Run ZAP baseline scan on actuator endpoints (root returns 404 which breaks ZAP)
+                                    # Note: Use relative paths - ZAP working dir is /zap/wrk
                                     ZAP_EXIT_CODE=0
                                     zap-baseline.py \\
                                         -t \${APP_URL}/actuator/health \\
-                                        -r /zap/wrk/reports/baseline-report.html \\
-                                        -w /zap/wrk/reports/baseline-report.md \\
-                                        -x /zap/wrk/reports/baseline-report.xml \\
-                                        -J /zap/wrk/reports/baseline-report.json || ZAP_EXIT_CODE=\$?
+                                        -r reports/baseline-report.html \\
+                                        -w reports/baseline-report.md \\
+                                        -x reports/baseline-report.xml \\
+                                        -J reports/baseline-report.json || ZAP_EXIT_CODE=\$?
 
                                     echo "ZAP scan completed with exit code: \${ZAP_EXIT_CODE}"
 
                                     # Copy reports to artifacts directory
                                     mkdir -p \${ARTIFACTS_DIR}/zap-reports
-                                    cp -r /zap/wrk/reports/* \${ARTIFACTS_DIR}/zap-reports/ 2>/dev/null || true
+                                    cp -r reports/* \${ARTIFACTS_DIR}/zap-reports/ 2>/dev/null || true
 
                                     # Install jq if not available (needed for JSON parsing)
                                     if ! command -v jq &> /dev/null; then
