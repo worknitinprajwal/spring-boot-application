@@ -424,8 +424,8 @@ HTMLEOF
                                         # Remove the placeholder script tag and add external JS reference
                                         sed -i.bak 's|<script id="aikido-data" type="application/json">AIKIDO_JSON_PLACEHOLDER</script>|<script src="aikido-scan-data.js"></script>|' ${ARTIFACTS_DIR}/aikido-report.html
 
-                                        # Update JavaScript to use the external variable
-                                        sed -i.bak "s|let scanData = {};|let scanData = aikidoScanData || {};|" ${ARTIFACTS_DIR}/aikido-report.html
+                                        # Update JavaScript to use the external variable (use # as delimiter to avoid || issue)
+                                        sed -i.bak "s#let scanData = {};#let scanData = aikidoScanData || {};#" ${ARTIFACTS_DIR}/aikido-report.html
                                         sed -i.bak '/const jsonElement = document.getElementById/,/console.error.*Length:/d' ${ARTIFACTS_DIR}/aikido-report.html
 
                                         rm -f ${ARTIFACTS_DIR}/aikido-report.html.bak
