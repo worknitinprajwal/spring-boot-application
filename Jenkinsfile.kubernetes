@@ -692,7 +692,7 @@ EOF
             }
         }
 
-        stage('API Testing - SoapUI') {
+        stage('Install Testing Tools') {
             when {
                 expression {
                     currentBuild.result == null || currentBuild.result == 'SUCCESS'
@@ -700,48 +700,97 @@ EOF
             }
             steps {
                 container('maven') {
-                    echo "🧪 Running SoapUI API tests..."
+                    echo "📥 Installing all testing tools (SoapUI, JMeter, ZAP)..."
                     script {
                         sh """
-                            # Install SoapUI Open Source (command-line runner)
+                            # Install SoapUI
                             if [ ! -f /tmp/SoapUI-5.7.0/bin/testrunner.sh ]; then
-                                echo "Installing SoapUI..."
+                                echo "📥 Downloading SoapUI 5.7.0..."
                                 cd /tmp
-                                wget -q https://s3.amazonaws.com/downloads.eviware/soapuios/5.7.0/SoapUI-5.7.0-linux-bin.tar.gz
-                                tar -xzf SoapUI-5.7.0-linux-bin.tar.gz
-                            fi
-
-                            # Create test reports directory
-                            mkdir -p ${ARTIFACTS_DIR}/soapui-reports
-
-                            # Check if SoapUI project exists
-                            if [ -f "tests/soapui/fitness-tracker-api-tests.xml" ]; then
-                                echo "Running SoapUI tests..."
-                                /tmp/SoapUI-5.7.0/bin/testrunner.sh \\
-                                    -f${ARTIFACTS_DIR}/soapui-reports \\
-                                    -PENDPOINT=${env.APP_URL} \\
-                                    tests/soapui/fitness-tracker-api-tests.xml || echo "SoapUI tests failed (non-blocking)"
+                                timeout 180 wget --progress=dot:giga https://s3.amazonaws.com/downloads.eviware/soapuios/5.7.0/SoapUI-5.7.0-linux-bin.tar.gz
+                                tar -xzf SoapUI-5.7.0-linux-bin.tar.gz && rm SoapUI-5.7.0-linux-bin.tar.gz
+                                echo "✅ SoapUI installed"
                             else
-                                echo "⚠️ No SoapUI test project found at tests/soapui/fitness-tracker-api-tests.xml"
-                                echo "Creating placeholder report..."
-                                echo "SoapUI test project not configured yet" > ${ARTIFACTS_DIR}/soapui-reports/summary.txt
+                                echo "✅ SoapUI already installed"
                             fi
 
-                            echo "=== SoapUI API Testing ===" >> ${ARTIFACTS_DIR}/build-info.txt
-                            echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${ARTIFACTS_DIR}/build-info.txt
-                            echo "Target URL: ${env.APP_URL}" >> ${ARTIFACTS_DIR}/build-info.txt
+                            # Install JMeter
+                            if [ ! -d /tmp/apache-jmeter-5.6.3 ]; then
+                                echo "📥 Downloading JMeter 5.6.3 (29 MB)..."
+                                cd /tmp
+                                timeout 180 wget --progress=dot:giga https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.6.3.tgz || {
+                                    echo "⚠️ Apache archive slow, trying mirror..."
+                                    wget --progress=dot:giga https://dlcdn.apache.org/jmeter/binaries/apache-jmeter-5.6.3.tgz
+                                }
+                                tar -xzf apache-jmeter-5.6.3.tgz && rm apache-jmeter-5.6.3.tgz
+                                echo "✅ JMeter installed"
+                            else
+                                echo "✅ JMeter already installed"
+                            fi
+
+                            # Install ZAP
+                            if [ ! -d /tmp/ZAP_2.14.0 ]; then
+                                echo "📥 Downloading OWASP ZAP 2.14.0 (460 MB - may take 5-10 minutes)..."
+                                cd /tmp
+                                timeout 600 wget --progress=dot:mega https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2.14.0_Linux.tar.gz || {
+                                    echo "❌ ZAP download failed/timeout, will skip ZAP tests"
+                                    touch /tmp/zap-download-failed
+                                    exit 0
+                                }
+                                tar -xzf ZAP_2.14.0_Linux.tar.gz && rm ZAP_2.14.0_Linux.tar.gz
+                                echo "✅ ZAP installed"
+                            else
+                                echo "✅ ZAP already installed"
+                            fi
+
+                            echo "✅ All testing tools ready"
                         """
                     }
                 }
             }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'build-artifacts/soapui-reports/**/*', allowEmptyArchive: true
-                }
-            }
         }
 
-        stage('Performance Testing - JMeter') {
+        stage('Run Tests in Parallel') {
+            when {
+                expression {
+                    currentBuild.result == null || currentBuild.result == 'SUCCESS'
+                }
+            }
+            parallel {
+                stage('API Testing - SoapUI') {
+                    steps {
+                        container('maven') {
+                            echo "🧪 Running SoapUI API tests..."
+                            script {
+                                sh """
+                                    mkdir -p ${ARTIFACTS_DIR}/soapui-reports
+
+                                    if [ -f "tests/soapui/fitness-tracker-api-tests.xml" ]; then
+                                        echo "Running SoapUI tests against ${env.APP_URL}..."
+                                        /tmp/SoapUI-5.7.0/bin/testrunner.sh \\
+                                            -f${ARTIFACTS_DIR}/soapui-reports \\
+                                            -PENDPOINT=${env.APP_URL} \\
+                                            tests/soapui/fitness-tracker-api-tests.xml || echo "⚠️ SoapUI tests failed (non-blocking)"
+                                    else
+                                        echo "⚠️ No SoapUI test project found, creating placeholder..."
+                                        echo "SoapUI test project not configured yet" > ${ARTIFACTS_DIR}/soapui-reports/summary.txt
+                                    fi
+
+                                    echo "=== SoapUI API Testing ===" >> ${ARTIFACTS_DIR}/build-info.txt
+                                    echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${ARTIFACTS_DIR}/build-info.txt
+                                    echo "Target URL: ${env.APP_URL}" >> ${ARTIFACTS_DIR}/build-info.txt
+                                """
+                            }
+                        }
+                    }
+                    post {
+                        always {
+                            archiveArtifacts artifacts: 'build-artifacts/soapui-reports/**/*', allowEmptyArchive: true
+                        }
+                    }
+                }
+
+                stage('Performance Testing - JMeter') {
             when {
                 expression {
                     currentBuild.result == null || currentBuild.result == 'SUCCESS'
@@ -752,34 +801,17 @@ EOF
                     echo "⚡ Running JMeter performance tests..."
                     script {
                         sh """
-                            # Install JMeter
-                            if [ ! -d /tmp/apache-jmeter-5.6.3 ]; then
-                                echo "📥 Downloading JMeter 5.6.3 (29 MB)..."
-                                cd /tmp
-                                timeout 180 wget --progress=dot:giga https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.6.3.tgz || {
-                                    echo "⚠️ Apache archive slow, trying mirror..."
-                                    wget --progress=dot:giga https://dlcdn.apache.org/jmeter/binaries/apache-jmeter-5.6.3.tgz
-                                }
-                                echo "📦 Extracting..."
-                                tar -xzf apache-jmeter-5.6.3.tgz && rm apache-jmeter-5.6.3.tgz
-                            else
-                                echo "✅ JMeter already installed"
-                            fi
-
-                            # Create reports directory
                             mkdir -p ${ARTIFACTS_DIR}/jmeter-reports
 
-                            # Check if JMeter test plan exists
                             if [ -f "tests/jmeter/fitness-tracker-load-test.jmx" ]; then
-                                echo "Running JMeter tests..."
+                                echo "Running JMeter performance tests against ${env.APP_URL}..."
                                 /tmp/apache-jmeter-5.6.3/bin/jmeter -n \\
                                     -t tests/jmeter/fitness-tracker-load-test.jmx \\
                                     -JAPP_URL=${env.APP_URL} \\
                                     -l ${ARTIFACTS_DIR}/jmeter-reports/results.jtl \\
-                                    -e -o ${ARTIFACTS_DIR}/jmeter-reports/html || echo "JMeter tests failed (non-blocking)"
+                                    -e -o ${ARTIFACTS_DIR}/jmeter-reports/html || echo "⚠️ JMeter tests failed (non-blocking)"
                             else
-                                echo "⚠️ No JMeter test plan found at tests/jmeter/fitness-tracker-load-test.jmx"
-                                echo "Creating placeholder report..."
+                                echo "⚠️ No JMeter test plan found, creating placeholder..."
                                 cat > ${ARTIFACTS_DIR}/jmeter-reports/summary.txt << 'JEOF'
 JMeter Performance Test - Not Configured
 
@@ -828,25 +860,23 @@ JEOF
                     echo "🔐 Running OWASP ZAP security scan..."
                     script {
                         sh """
-                            # Install ZAP
-                            if [ ! -d /tmp/ZAP_2.14.0 ]; then
-                                echo "Installing OWASP ZAP..."
-                                cd /tmp
-                                wget -q https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2.14.0_Linux.tar.gz
-                                tar -xzf ZAP_2.14.0_Linux.tar.gz
-                            fi
-
-                            # Create reports directory
                             mkdir -p ${ARTIFACTS_DIR}/zap-reports
 
-                            # Run ZAP baseline scan (non-intrusive, suitable for CI/CD)
-                            echo "Running ZAP baseline scan against ${env.APP_URL}..."
+                            # Check if ZAP download failed in installation stage
+                            if [ -f /tmp/zap-download-failed ]; then
+                                echo "⚠️ ZAP was not installed (download failed), skipping scan"
+                                echo "ZAP download failed during installation" > ${ARTIFACTS_DIR}/zap-reports/summary.txt
+                                exit 0
+                            fi
+
+                            echo "🔐 Running ZAP baseline scan against ${env.APP_URL}..."
 
                             # Start ZAP in daemon mode
                             /tmp/ZAP_2.14.0/zap.sh -daemon -port 8090 -config api.disablekey=true &
                             ZAP_PID=\$!
 
                             # Wait for ZAP to start
+                            echo "Waiting for ZAP to initialize..."
                             sleep 30
 
                             # Run baseline scan
@@ -855,10 +885,10 @@ JEOF
                                 -r ${ARTIFACTS_DIR}/zap-reports/baseline-report.html \\
                                 -x ${ARTIFACTS_DIR}/zap-reports/baseline-report.xml \\
                                 -J ${ARTIFACTS_DIR}/zap-reports/baseline-report.json \\
-                                -a || echo "ZAP scan completed with findings (non-blocking)"
+                                -a || echo "⚠️ ZAP scan completed with findings (non-blocking)"
 
                             # Stop ZAP
-                            kill \$ZAP_PID || true
+                            kill \$ZAP_PID 2>/dev/null || true
 
                             # Create summary
                             cat > ${ARTIFACTS_DIR}/zap-reports/summary.txt << 'ZEOF'
@@ -894,6 +924,8 @@ ZEOF
                         reportFiles: 'baseline-report.html',
                         reportName: 'OWASP ZAP Security Report'
                     ])
+                }
+            }
                 }
             }
         }
