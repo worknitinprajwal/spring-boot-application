@@ -1054,9 +1054,9 @@ AWKEOF
                                     # Parse the scan output to extract findings
                                     echo "📊 Parsing scan results..."
 
-                                    # Extract warning counts from output
-                                    WARN_COUNT=\$(grep -c "^WARN-NEW:" reports/scan-output.txt || echo 0)
-                                    FAIL_COUNT=\$(grep -c "^FAIL-NEW:" reports/scan-output.txt || echo 0)
+                                    # Extract warning counts from output (exclude summary line by looking for ' x ')
+                                    WARN_COUNT=\$(grep "^WARN-NEW:.*x " reports/scan-output.txt | wc -l || echo 0)
+                                    FAIL_COUNT=\$(grep "^FAIL-NEW:.*x " reports/scan-output.txt | wc -l || echo 0)
                                     PASS_COUNT=\$(grep "^PASS:" reports/scan-output.txt | wc -l || echo 0)
 
                                     # Create a summary report from the text output
@@ -1076,17 +1076,17 @@ Alert Summary:
 Detailed Findings:
 SUMMARYEOF
 
-                                    # Extract and list all warnings
+                                    # Extract and list all warnings (exclude summary line)
                                     if [ \${WARN_COUNT} -gt 0 ]; then
                                         echo "" >> reports/metrics-summary.txt
                                         echo "Warnings Found:" >> reports/metrics-summary.txt
-                                        grep "^WARN-NEW:" reports/scan-output.txt | sed 's/^WARN-NEW: /  ⚠️  /' >> reports/metrics-summary.txt
+                                        grep "^WARN-NEW:.*x " reports/scan-output.txt | sed 's/^WARN-NEW: /  ⚠️  /' >> reports/metrics-summary.txt
                                     fi
 
                                     if [ \${FAIL_COUNT} -gt 0 ]; then
                                         echo "" >> reports/metrics-summary.txt
                                         echo "Failures Found:" >> reports/metrics-summary.txt
-                                        grep "^FAIL-NEW:" reports/scan-output.txt | sed 's/^FAIL-NEW: /  ❌ /' >> reports/metrics-summary.txt
+                                        grep "^FAIL-NEW:.*x " reports/scan-output.txt | sed 's/^FAIL-NEW: /  ❌ /' >> reports/metrics-summary.txt
                                     fi
 
                                     echo "" >> reports/metrics-summary.txt
