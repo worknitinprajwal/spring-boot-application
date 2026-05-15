@@ -616,26 +616,46 @@ EOF
                 container('maven') {
                     script {
                         def argoApp = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev' : 'fitness-tracker-test'
+                        def argoNamespace = 'argocd'  // ArgoCD runs in argocd namespace on kind-igs cluster
                         echo "⏳ Waiting for ArgoCD to sync ${argoApp} with image ${IMAGE_TAG}..."
                         sh """
+                            # Configure kubectl to use in-cluster config
+                            # Jenkins agent pods run inside kind-igs cluster where ArgoCD is installed
+                            export KUBECONFIG=/var/run/secrets/kubernetes.io/serviceaccount/token
+
+                            # Alternative: use kubectl with service account token
+                            APISERVER=https://kubernetes.default.svc
+                            SERVICEACCOUNT=/var/run/secrets/kubernetes.io/serviceaccount
+                            TOKEN=\$(cat \${SERVICEACCOUNT}/token)
+                            CACERT=\${SERVICEACCOUNT}/ca.crt
+
                             MAX_ATTEMPTS=20
-                            for i in \$(seq 1 \$MAX_ATTEMPTS); do
-                                echo "[\$i/\$MAX_ATTEMPTS] Checking ArgoCD sync..."
+                            ATTEMPT=0
+                            while [ \$ATTEMPT -lt \$MAX_ATTEMPTS ]; do
+                                ATTEMPT=\$((ATTEMPT + 1))
+                                echo "[\$ATTEMPT/\$MAX_ATTEMPTS] Checking ArgoCD sync status..."
 
-                                SYNC_STATUS=\$(kubectl get app ${argoApp} -n argocd -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "Unknown")
-                                DEPLOYED_IMAGE=\$(kubectl get app ${argoApp} -n argocd -o jsonpath='{.status.summary.images[0]}' 2>/dev/null || echo "")
+                                # Use kubectl with explicit server and token
+                                SYNC_STATUS=\$(kubectl --server=\$APISERVER --token=\$TOKEN --certificate-authority=\$CACERT \\
+                                    get app ${argoApp} -n ${argoNamespace} -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "Unknown")
+                                DEPLOYED_IMAGE=\$(kubectl --server=\$APISERVER --token=\$TOKEN --certificate-authority=\$CACERT \\
+                                    get app ${argoApp} -n ${argoNamespace} -o jsonpath='{.status.summary.images[0]}' 2>/dev/null || echo "")
 
-                                echo "  Sync: \$SYNC_STATUS | Image: \$DEPLOYED_IMAGE"
+                                echo "  Sync Status: \$SYNC_STATUS"
+                                echo "  Deployed Image: \$DEPLOYED_IMAGE"
+                                echo "  Expected Image: ${IMAGE_NAME}:${IMAGE_TAG}"
 
                                 if [ "\$SYNC_STATUS" = "Synced" ] && echo "\$DEPLOYED_IMAGE" | grep -q "${IMAGE_TAG}"; then
-                                    echo "✅ ArgoCD synced with correct image!"
+                                    echo "✅ ArgoCD successfully synced with correct image!"
                                     exit 0
                                 fi
 
                                 sleep 10
                             done
 
-                            echo "⚠️ Timeout waiting for ArgoCD, continuing anyway"
+                            echo "⚠️ Timeout waiting for ArgoCD sync after \$((MAX_ATTEMPTS * 10)) seconds"
+                            echo "⚠️ Current sync status: \$SYNC_STATUS"
+                            echo "⚠️ Continuing pipeline anyway (non-blocking)"
                             exit 0
                         """
                     }
