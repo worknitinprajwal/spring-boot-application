@@ -725,14 +725,13 @@ EOF
                     echo "📥 Installing all testing tools (SoapUI, JMeter, ZAP)..."
                     script {
                         sh """
-                            # Install SoapUI (non-blocking if fails)
+                            # Install SoapUI
                             if [ ! -f /tmp/SoapUI-5.7.0/bin/testrunner.sh ]; then
                                 echo "📥 Downloading SoapUI 5.7.0 (120 MB)..."
                                 cd /tmp
                                 timeout 360 wget --progress=dot:giga https://s3.amazonaws.com/downloads.eviware/soapuios/5.7.0/SoapUI-5.7.0-linux-bin.tar.gz || {
                                     echo "❌ SoapUI download failed/timeout, will skip SoapUI tests"
                                     touch /tmp/soapui-download-failed
-                                    # Continue with other tools
                                     exit 0
                                 }
                                 tar -xzf SoapUI-5.7.0-linux-bin.tar.gz && rm SoapUI-5.7.0-linux-bin.tar.gz
@@ -741,17 +740,16 @@ EOF
                                 echo "✅ SoapUI already installed"
                             fi
 
-                            # Install JMeter (non-blocking if fails)
+                            # Install JMeter
                             if [ ! -d /tmp/apache-jmeter-5.6.3 ]; then
                                 echo "📥 Downloading JMeter 5.6.3 (29 MB)..."
                                 cd /tmp
                                 timeout 300 wget --progress=dot:giga https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.6.3.tgz || {
                                     echo "⚠️ Apache archive slow, trying mirror..."
                                     timeout 300 wget --progress=dot:giga https://dlcdn.apache.org/jmeter/binaries/apache-jmeter-5.6.3.tgz || {
-                                        echo "❌ JMeter download failed, will skip JMeter tests"
+                                        echo "❌ JMeter download failed/timeout, will skip JMeter tests"
                                         touch /tmp/jmeter-download-failed
-                                        # Continue with other tools
-                                        cd /tmp && exit 0
+                                        exit 0
                                     }
                                 }
                                 tar -xzf apache-jmeter-5.6.3.tgz && rm apache-jmeter-5.6.3.tgz
@@ -797,7 +795,6 @@ EOF
                                 sh """
                                     mkdir -p ${ARTIFACTS_DIR}/soapui-reports
 
-                                    # Check if download failed
                                     if [ -f /tmp/soapui-download-failed ]; then
                                         echo "⚠️ SoapUI not installed (download failed), skipping tests"
                                         echo "SoapUI download failed during installation" > ${ARTIFACTS_DIR}/soapui-reports/summary.txt
@@ -842,7 +839,6 @@ EOF
                         sh """
                             mkdir -p ${ARTIFACTS_DIR}/jmeter-reports
 
-                            # Check if download failed
                             if [ -f /tmp/jmeter-download-failed ]; then
                                 echo "⚠️ JMeter not installed (download failed), skipping tests"
                                 echo "JMeter download failed during installation" > ${ARTIFACTS_DIR}/jmeter-reports/summary.txt
@@ -1126,9 +1122,41 @@ EOF
                 script {
                     try {
                         echo "Creating Jira ticket for pipeline failure..."
+
+                        // Capture detailed failure information
+                        def failedStage = env.STAGE_NAME ?: 'Unknown Stage'
+                        def buildLog = currentBuild.rawBuild.getLog(100).join('\n')
+                        def failureReason = buildLog.findAll(/(?i)(error|failed|exception|timeout).*/).take(5).join('\n')
+
                         withCredentials([string(credentialsId: 'jira-api-token', variable: 'JIRA_API_TOKEN')]) {
-                            sh '''
-                                # Create JSON payload file
+                            sh """
+                                # Create detailed failure description
+                                cat > ${ARTIFACTS_DIR}/failure-details.txt << 'FAILEOF'
+Pipeline Build Failure Report
+
+Build Information:
+- Job: ${JOB_NAME}
+- Build Number: ${BUILD_NUMBER}
+- Branch: ${BRANCH_NAME}
+- Failed Stage: ${failedStage}
+- Build URL: ${BUILD_URL}
+
+Failure Details:
+${failureReason}
+
+Links:
+- Console Output: ${BUILD_URL}console
+- Build Artifacts: ${BUILD_URL}artifact/
+- Workspace: ${BUILD_URL}ws/
+
+Recommendation:
+1. Review the console output at the failed stage
+2. Check recent code changes in this branch
+3. Verify all dependencies and tools are properly installed
+4. Check if this is a transient network/timeout issue
+FAILEOF
+
+                                # Create JSON payload with detailed description
                                 cat > ${ARTIFACTS_DIR}/jira-payload.json << 'JSONEOF'
 {
   "fields": {
@@ -1141,44 +1169,50 @@ EOF
         "type": "paragraph",
         "content": [{
           "type": "text",
-          "text": "Build failed. See console for details."
+          "text": "FAILURE_DETAILS_PLACEHOLDER"
         }]
       }]
     },
     "issuetype": { "name": "Task" },
     "priority": { "name": "High" },
-    "labels": ["ci-cd", "pipeline-failure", "automated"]
+    "labels": ["ci-cd", "pipeline-failure", "automated", "BRANCH_LABEL"]
   }
 }
 JSONEOF
 
+                                # Prepare failure details for JSON (escape newlines and quotes)
+                                FAILURE_TEXT=\$(cat ${ARTIFACTS_DIR}/failure-details.txt | sed 's/"/\\\\"/g' | awk '{printf "%s\\\\n", \$0}')
+
                                 # Replace placeholders
                                 sed -i "s|FITNESS_TRACKER_PLACEHOLDER|${JOB_NAME} #${BUILD_NUMBER}|g" ${ARTIFACTS_DIR}/jira-payload.json
-                                sed -i "s|Build failed. See console for details.|Build ${BUILD_NUMBER} on branch ${BRANCH_NAME} failed.\\\\n\\\\nConsole Output: ${BUILD_URL}console\\\\nBuild Artifacts: ${BUILD_URL}artifact/|g" ${ARTIFACTS_DIR}/jira-payload.json
+                                sed -i "s|FAILURE_DETAILS_PLACEHOLDER|\$FAILURE_TEXT|g" ${ARTIFACTS_DIR}/jira-payload.json
+                                sed -i "s|BRANCH_LABEL|${BRANCH_NAME}|g" ${ARTIFACTS_DIR}/jira-payload.json
 
                                 # Create Jira ticket using REST API
-                                curl -X POST \
-                                  -H "Content-Type: application/json" \
-                                  -u "${JIRA_EMAIL}:${JIRA_API_TOKEN}" \
-                                  -d @${ARTIFACTS_DIR}/jira-payload.json \
-                                  "${JIRA_SITE}/rest/api/3/issue" \
-                                  -o ${ARTIFACTS_DIR}/jira-response.json \
+                                echo "📝 Creating Jira ticket with detailed failure information..."
+                                curl -X POST \\
+                                  -H "Content-Type: application/json" \\
+                                  -u "\${JIRA_EMAIL}:\${JIRA_API_TOKEN}" \\
+                                  -d @\${ARTIFACTS_DIR}/jira-payload.json \\
+                                  "\${JIRA_SITE}/rest/api/3/issue" \\
+                                  -o \${ARTIFACTS_DIR}/jira-response.json \\
                                   -w "HTTP Status: %{http_code}\\n"
 
                                 # Show response for debugging
                                 echo "Jira API Response:"
-                                cat ${ARTIFACTS_DIR}/jira-response.json
+                                cat \${ARTIFACTS_DIR}/jira-response.json
 
                                 # Extract issue key
-                                if [ -f ${ARTIFACTS_DIR}/jira-response.json ]; then
-                                    ISSUE_KEY=$(cat ${ARTIFACTS_DIR}/jira-response.json | grep -o '"key":"[^"]*"' | head -1 | cut -d'"' -f4)
-                                    if [ -n "$ISSUE_KEY" ]; then
-                                        echo "✅ Jira ticket created: ${JIRA_SITE}/browse/$ISSUE_KEY"
+                                if [ -f \${ARTIFACTS_DIR}/jira-response.json ]; then
+                                    ISSUE_KEY=\$(cat \${ARTIFACTS_DIR}/jira-response.json | grep -o '"key":"[^"]*"' | head -1 | cut -d'"' -f4)
+                                    if [ -n "\$ISSUE_KEY" ]; then
+                                        echo "✅ Jira ticket created: \${JIRA_SITE}/browse/\$ISSUE_KEY"
+                                        echo "   Ticket includes: Stage name, failure reason, console output link, artifacts"
                                     else
                                         echo "⚠️ Could not extract issue key from response"
                                     fi
                                 fi
-                            '''
+                            """
                         }
                     } catch (Exception e) {
                         echo "⚠️ Failed to create Jira ticket: ${e.message}"
