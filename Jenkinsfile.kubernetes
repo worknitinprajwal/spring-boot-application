@@ -223,10 +223,10 @@ JSONEOF
                                     fi
                                 fi
 
-                                # Generate HTML report from scan results
-                                if [ -n "\${SCAN_ID}" ]; then
-                                    echo "Generating HTML report..."
-                                    cat > ${ARTIFACTS_DIR}/aikido-report.html <<'HTMLEOF'
+                                # Skip HTML report generation - just keep text output
+                                if false; then
+                                    echo "HTML report generation disabled"
+                                    cat > /dev/null <<'HTMLEOF'
 <!DOCTYPE html>
 <html>
 <head>
@@ -452,22 +452,12 @@ PYEOF
             }
             post {
                 always {
-                    // Archive security scan results
+                    // Archive security scan results (text and JSON only)
                     archiveArtifacts artifacts: 'build-artifacts/aikido-scan-output.txt', allowEmptyArchive: true
                     archiveArtifacts artifacts: 'build-artifacts/aikido-scan-details*.json', allowEmptyArchive: true
-                    archiveArtifacts artifacts: 'build-artifacts/aikido-scan-data.js', allowEmptyArchive: true
-                    archiveArtifacts artifacts: 'build-artifacts/aikido-report.html', allowEmptyArchive: true
                     archiveArtifacts artifacts: 'build-artifacts/build-info.txt', allowEmptyArchive: true
 
-                    // Publish HTML report
-                    publishHTML(target: [
-                        allowMissing: true,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'build-artifacts',
-                        reportFiles: 'aikido-report.html',
-                        reportName: 'Aikido Security Report'
-                    ])
+                    // HTML report generation disabled - use Aikido dashboard link from scan output
                 }
             }
         }
