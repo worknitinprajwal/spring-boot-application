@@ -488,18 +488,18 @@ EOF
                         def ingressPort = env.BRANCH_NAME == 'develop' ? '8081' : '8082'
                         def ingressUrl = "http://${ingressHost}:${ingressPort}"
 
-                        // Internal URL for health checks (NodePort from within Jenkins cluster)
+                        // Use Ingress URL for all tests (NodePort unreliable with cross-node traffic in KIND)
                         def nodePortUrl = env.BRANCH_NAME == 'develop' ?
                             'http://172.18.0.5:30830' :
                             'http://172.18.0.7:31397'
 
-                        env.APP_URL = nodePortUrl  // Use NodePort for internal health checks
+                        env.APP_URL = ingressUrl  // Use Ingress for reliable testing
                         env.EXTERNAL_URL = ingressUrl  // Display ingress URL to users
 
                         echo "📍 ArgoCD App: ${argoApp}"
                         echo "📍 Namespace: ${appNamespace}"
-                        echo "📍 Ingress URL: ${ingressUrl}"
-                        echo "📍 Internal Test URL: ${nodePortUrl}"
+                        echo "📍 Ingress URL (test endpoint): ${ingressUrl}"
+                        echo "📍 NodePort URL (deprecated): ${nodePortUrl}"
 
                         sh """
                             export KUBECONFIG=/root/.kube/config
