@@ -293,9 +293,11 @@ spec:
         </table>
     </div>
 
+    <script id="aikido-data" type="application/json">
+    </script>
     <script>
-        // Parse JSON data embedded below
-        const scanData = SCAN_DATA_PLACEHOLDER;
+        // Parse JSON data from the script tag above
+        const scanData = JSON.parse(document.getElementById('aikido-data').textContent || '{}');
 
         // Extract severity counts from the message
         if (scanData && scanData.outcome && scanData.outcome.short_human_readable_message) {
@@ -344,7 +346,7 @@ HTMLEOF
                                     if [ -f ${ARTIFACTS_DIR}/aikido-scan-details.json ]; then
                                         echo "📊 Generating HTML report with Aikido scan data..."
 
-                                        # Only replace basic metadata, JavaScript will handle the rest
+                                        # Replace basic metadata placeholders
                                         sed -e "s|REPO_NAME_PLACEHOLDER|\${REPO_NAME}|g" \
                                             -e "s|COMMIT_PLACEHOLDER|${GIT_COMMIT}|g" \
                                             -e "s|BRANCH_PLACEHOLDER|${BRANCH_NAME}|g" \
@@ -361,12 +363,13 @@ HTMLEOF
                                             ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp
                                         mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
 
-                                        # Embed JSON data - JavaScript will update all counts dynamically
-                                        sed "s|SCAN_DATA_PLACEHOLDER|\$(cat ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo '{}')|g" \
+                                        # Inject JSON data into the script tag (MUCH safer than sed replacement)
+                                        # Find the aikido-data script tag and insert JSON between the tags
+                                        awk '/<script id="aikido-data"/ {print; getline; print; while ((getline line < "'${ARTIFACTS_DIR}'/aikido-scan-details.json") > 0) print "    " line; next} 1' \
                                             ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp
                                         mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
 
-                                        echo "✅ HTML report generated - JavaScript will populate all data from JSON"
+                                        echo "✅ HTML report generated with embedded Aikido JSON data"
                                     fi
                                 fi
 
