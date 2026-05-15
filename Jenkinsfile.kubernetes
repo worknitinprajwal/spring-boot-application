@@ -478,21 +478,48 @@ EOF
                         def appNamespace = env.BRANCH_NAME == 'develop' ? 'dev' : 'test'
                         def targetContext = env.BRANCH_NAME == 'develop' ? 'kind-kind-dev' : 'kind-kind-test'
 
-                        // Use localhost with port-forward for cross-cluster access
-                        // Jenkins runs in kind-igs, apps in kind-kind-dev/kind-kind-test clusters
+                        // Use localhost with port-forward for cross-cluster access from tests
                         def localPort = env.BRANCH_NAME == 'develop' ? '8091' : '8092'
                         def appUrl = "http://localhost:${localPort}"
+
+                        // Ingress URLs for browser access
+                        def ingressHost = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev.local' : 'fitness-tracker-test.local'
+                        def ingressPort = env.BRANCH_NAME == 'develop' ? '8081' : '8082'
+                        def ingressUrl = "http://${ingressHost}"
+                        def ingressUrlWithPort = "http://localhost:${ingressPort}"
 
                         env.APP_URL = appUrl
                         env.LOCAL_PORT = localPort
                         env.TARGET_CONTEXT = targetContext
                         env.APP_NAMESPACE = appNamespace
+                        env.INGRESS_HOST = ingressHost
+                        env.INGRESS_PORT = ingressPort
+                        env.INGRESS_URL = ingressUrl
+                        env.INGRESS_URL_WITH_PORT = ingressUrlWithPort
 
-                        echo "📍 ArgoCD App: ${argoApp}"
-                        echo "📍 Namespace: ${appNamespace}"
-                        echo "📍 Target Cluster: ${targetContext}"
-                        echo "📍 Local Port: ${localPort}"
-                        echo "📍 Test URL: ${appUrl}"
+                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                        echo "📍 Deployment Information"
+                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                        echo "ArgoCD App: ${argoApp}"
+                        echo "Namespace: ${appNamespace}"
+                        echo "Target Cluster: ${targetContext}"
+                        echo ""
+                        echo "🧪 Test Access (internal):"
+                        echo "  URL: ${appUrl}"
+                        echo ""
+                        echo "🌐 Browser Access (external):"
+                        echo "  Ingress Host: ${ingressHost}"
+                        echo "  Ingress URL: ${ingressUrl}"
+                        echo ""
+                        echo "💡 To access from your browser:"
+                        echo "  Option 1 - Port-forward (Recommended):"
+                        echo "    kubectl --context=${targetContext} -n ${appNamespace} port-forward svc/fitness-tracker ${ingressPort}:8080"
+                        echo "    Then visit: ${ingressUrlWithPort}"
+                        echo ""
+                        echo "  Option 2 - Add hosts entry:"
+                        echo "    Add to /etc/hosts: <cluster-ip> ${ingressHost}"
+                        echo "    Then visit: ${ingressUrl}"
+                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
                         sh """
                             export KUBECONFIG=/root/.kube/config
@@ -1661,6 +1688,13 @@ EOF
             echo "🐳 Image: ${IMAGE_NAME}:${IMAGE_TAG}"
             echo "📊 Artifacts: ${BUILD_URL}artifact/"
             echo "📈 Reports: ${BUILD_URL}"
+            echo ""
+            echo "🌐 Access Your Application:"
+            echo "  Ingress: ${env.INGRESS_URL}"
+            echo ""
+            echo "  From your Mac, run:"
+            echo "  kubectl --context=${env.TARGET_CONTEXT} -n ${env.APP_NAMESPACE} port-forward svc/fitness-tracker ${env.INGRESS_PORT}:8080"
+            echo "  Then visit: ${env.INGRESS_URL_WITH_PORT}"
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         }
         failure {
