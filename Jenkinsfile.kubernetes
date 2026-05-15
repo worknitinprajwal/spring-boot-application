@@ -297,6 +297,31 @@ spec:
         // Parse JSON data embedded below
         const scanData = SCAN_DATA_PLACEHOLDER;
 
+        // Extract severity counts from the message
+        if (scanData && scanData.outcome && scanData.outcome.short_human_readable_message) {
+            const msg = scanData.outcome.short_human_readable_message;
+
+            // Extract counts using regex
+            const criticalMatch = msg.match(/(\d+)\s+new\s+CRITICAL/i);
+            const highMatch = msg.match(/(\d+)\s+new\s+HIGH/i);
+            const mediumMatch = msg.match(/(\d+)\s+new\s+MEDIUM/i);
+            const lowMatch = msg.match(/(\d+)\s+new\s+LOW/i);
+
+            // Update the count elements
+            const counts = document.querySelectorAll('.count');
+            if (criticalMatch && counts[0]) counts[0].textContent = criticalMatch[1];
+            if (highMatch && counts[1]) counts[1].textContent = highMatch[1];
+            if (mediumMatch && counts[2]) counts[2].textContent = mediumMatch[1];
+            if (lowMatch && counts[3]) counts[3].textContent = lowMatch[1];
+
+            // Update gate status
+            const gateDiv = document.querySelector('.gate-status');
+            if (scanData.gate_passed === false) {
+                gateDiv.className = 'gate-status gate-failed';
+                gateDiv.textContent = msg;
+            }
+        }
+
         // Populate issues table
         const issuesBody = document.getElementById('issues-body');
         if (scanData && scanData.issues) {
@@ -315,56 +340,11 @@ spec:
 </html>
 HTMLEOF
 
-                                    # Parse JSON and populate HTML report
+                                    # Generate HTML report - let JavaScript parse JSON and populate counts
                                     if [ -f ${ARTIFACTS_DIR}/aikido-scan-details.json ]; then
-                                        # Extract data directly from JSON using jq
-                                        if command -v jq >/dev/null 2>&1; then
-                                            # Get the human readable summary message from Aikido
-                                            AIKIDO_MSG=\$(jq -r '.outcome.short_human_readable_message // "No message available"' ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null)
+                                        echo "📊 Generating HTML report with Aikido scan data..."
 
-                                            # Get gate status and issue counts directly from JSON
-                                            GATE_PASSED=\$(jq -r '.gate_passed' ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null)
-                                            TOTAL_ISSUES=\$(jq -r '.new_issues_found // 0' ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null)
-                                            DEP_ISSUES=\$(jq -r '.new_dependency_issues_found // 0' ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null)
-                                            SAST_ISSUES=\$(jq -r '.new_sast_issues_found // 0' ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null)
-                                            IAC_ISSUES=\$(jq -r '.new_iac_issues_found // 0' ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null)
-                                            SECRET_ISSUES=\$(jq -r '.new_leaked_secret_issues_found // 0' ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null)
-
-                                            # Use Aikido's own message to display severity breakdown
-                                            # Set individual counts from the message if available
-                                            CRITICAL_COUNT=\$(echo "\${AIKIDO_MSG}" | grep -oE '[0-9]+ new CRITICAL' | grep -oE '[0-9]+' | head -1)
-                                            HIGH_COUNT=\$(echo "\${AIKIDO_MSG}" | grep -oE '[0-9]+ new HIGH' | grep -oE '[0-9]+' | head -1)
-                                            MEDIUM_COUNT=\$(echo "\${AIKIDO_MSG}" | grep -oE '[0-9]+ new MEDIUM' | grep -oE '[0-9]+' | head -1)
-                                            LOW_COUNT=\$(echo "\${AIKIDO_MSG}" | grep -oE '[0-9]+ new LOW' | grep -oE '[0-9]+' | head -1)
-
-                                            CRITICAL_COUNT=\${CRITICAL_COUNT:-0}
-                                            HIGH_COUNT=\${HIGH_COUNT:-0}
-                                            MEDIUM_COUNT=\${MEDIUM_COUNT:-0}
-                                            LOW_COUNT=\${LOW_COUNT:-0}
-                                        else
-                                            # Fallback without jq
-                                            AIKIDO_MSG="jq not available"
-                                            CRITICAL_COUNT=0
-                                            HIGH_COUNT=0
-                                            MEDIUM_COUNT=0
-                                            LOW_COUNT=0
-                                            GATE_PASSED="true"
-                                            TOTAL_ISSUES=0
-                                        fi
-
-                                        # Determine gate status display
-                                        if [ "\${GATE_PASSED}" = "false" ]; then
-                                            GATE_CLASS="gate-failed"
-                                            GATE_MSG="\${AIKIDO_MSG}"
-                                        else
-                                            GATE_CLASS="gate-passed"
-                                            GATE_MSG="✅ CI Gate Passed: No blocking security issues"
-                                        fi
-
-                                        # Replace placeholders using a single comprehensive sed command
-                                        echo "Populating HTML report with: CRITICAL=\${CRITICAL_COUNT}, HIGH=\${HIGH_COUNT}, MEDIUM=\${MEDIUM_COUNT}, LOW=\${LOW_COUNT}"
-
-                                        # Do all replacements in a single pass
+                                        # Only replace basic metadata, JavaScript will handle the rest
                                         sed -e "s|REPO_NAME_PLACEHOLDER|\${REPO_NAME}|g" \
                                             -e "s|COMMIT_PLACEHOLDER|${GIT_COMMIT}|g" \
                                             -e "s|BRANCH_PLACEHOLDER|${BRANCH_NAME}|g" \
@@ -372,20 +352,21 @@ HTMLEOF
                                             -e "s|SCAN_DATE_PLACEHOLDER|\$(date -u +%Y-%m-%dT%H:%M:%SZ)|g" \
                                             -e "s|SCAN_ID_PLACEHOLDER|\${SCAN_ID}|g" \
                                             -e "s|DIFF_URL_PLACEHOLDER|\${DIFF_URL}|g" \
-                                            -e "s|GATE_STATUS_CLASS|\${GATE_CLASS}|g" \
-                                            -e "s|GATE_STATUS_MESSAGE|\${GATE_MSG}|g" \
-                                            -e "s|CRITICAL_COUNT|\${CRITICAL_COUNT}|g" \
-                                            -e "s|HIGH_COUNT|\${HIGH_COUNT}|g" \
-                                            -e "s|MEDIUM_COUNT|\${MEDIUM_COUNT}|g" \
-                                            -e "s|LOW_COUNT|\${LOW_COUNT}|g" \
+                                            -e "s|GATE_STATUS_CLASS|gate-passed|g" \
+                                            -e "s|GATE_STATUS_MESSAGE|Loading scan results...|g" \
+                                            -e "s|CRITICAL_COUNT|0|g" \
+                                            -e "s|HIGH_COUNT|0|g" \
+                                            -e "s|MEDIUM_COUNT|0|g" \
+                                            -e "s|LOW_COUNT|0|g" \
                                             ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp
-
                                         mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
 
-                                        # Embed JSON data for JavaScript to parse
-                                        sed -i "s|SCAN_DATA_PLACEHOLDER|\$(cat ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo '{}')|g" ${ARTIFACTS_DIR}/aikido-report.html
+                                        # Embed JSON data - JavaScript will update all counts dynamically
+                                        sed "s|SCAN_DATA_PLACEHOLDER|\$(cat ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo '{}')|g" \
+                                            ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp
+                                        mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
 
-                                        echo "✅ HTML report generated: ${ARTIFACTS_DIR}/aikido-report.html"
+                                        echo "✅ HTML report generated - JavaScript will populate all data from JSON"
                                     fi
                                 fi
 
