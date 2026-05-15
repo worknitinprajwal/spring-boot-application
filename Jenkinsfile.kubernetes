@@ -592,8 +592,11 @@ EOF
 
                                     mkdir -p \${ARTIFACTS_DIR}/api-tests
 
+                                    # Use HEALTH_CHECK_URL for API tests (NodePort, works from Jenkins pod)
+                                    TEST_URL="${env.HEALTH_CHECK_URL}"
+
                                     echo "=== REST API Functional Testing ===" | tee \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                    echo "Target: \${APP_URL}" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                    echo "Target: \${TEST_URL}" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
                                     echo "Timestamp: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
                                     echo "" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
 
@@ -611,7 +614,7 @@ EOF
                                         -H "Accept: application/json" \\
                                         --connect-timeout 5 \\
                                         --max-time 10 \\
-                                        \${APP_URL}/actuator/health)
+                                        \${TEST_URL}/actuator/health)
                                     END_TIME=\$(date +%s%3N)
                                     LATENCY=\$((END_TIME - START_TIME))
 
@@ -656,7 +659,7 @@ EOF
                                         -H "Accept: application/json" \\
                                         --connect-timeout 5 \\
                                         --max-time 10 \\
-                                        \${APP_URL}/actuator/info)
+                                        \${TEST_URL}/actuator/info)
                                     END_TIME=\$(date +%s%3N)
                                     LATENCY=\$((END_TIME - START_TIME))
 
@@ -691,7 +694,7 @@ EOF
                                         -H "Accept: application/json" \\
                                         --connect-timeout 5 \\
                                         --max-time 10 \\
-                                        \${APP_URL}/actuator/metrics)
+                                        \${TEST_URL}/actuator/metrics)
                                     END_TIME=\$(date +%s%3N)
                                     LATENCY=\$((END_TIME - START_TIME))
 
