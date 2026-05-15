@@ -860,6 +860,7 @@ Action Items:
 3. Verify all external dependencies are accessible
 FAILEOF
 
+                                # Create Jira payload with proper ADF (Atlassian Document Format)
                                 cat > ${ARTIFACTS_DIR}/jira-payload.json << 'JSONEOF'
 {
   "fields": {
@@ -868,13 +869,60 @@ FAILEOF
     "description": {
       "type": "doc",
       "version": 1,
-      "content": [{
-        "type": "paragraph",
-        "content": [{
-          "type": "text",
-          "text": "FAILURE_DETAILS_PLACEHOLDER"
-        }]
-      }]
+      "content": [
+        {
+          "type": "heading",
+          "attrs": {"level": 2},
+          "content": [{"type": "text", "text": "Pipeline Build Failure Report"}]
+        },
+        {
+          "type": "heading",
+          "attrs": {"level": 3},
+          "content": [{"type": "text", "text": "Build Information"}]
+        },
+        {
+          "type": "bulletList",
+          "content": [
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Job: JOB_PLACEHOLDER"}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Build Number: BUILD_NUM_PLACEHOLDER"}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Branch: BRANCH_PLACEHOLDER"}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Failed Stage: STAGE_PLACEHOLDER"}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Duration: DURATION_PLACEHOLDER"}]}]}
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {"level": 3},
+          "content": [{"type": "text", "text": "Failure Analysis"}]
+        },
+        {
+          "type": "paragraph",
+          "content": [{"type": "text", "text": "This build failed during the STAGE_PLACEHOLDER stage. Please check:"}]
+        },
+        {
+          "type": "orderedList",
+          "content": [
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Console output for specific error messages"}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Recent code changes that may have introduced issues"}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Network connectivity or timeout issues"}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "ArgoCD synchronization status"}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Target cluster accessibility"}]}]}
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {"level": 3},
+          "content": [{"type": "text", "text": "Links"}]
+        },
+        {
+          "type": "bulletList",
+          "content": [
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Console Output: ", "marks": [{"type": "strong"}]}, {"type": "text", "text": "CONSOLE_URL_PLACEHOLDER", "marks": [{"type": "link", "attrs": {"href": "CONSOLE_URL_PLACEHOLDER"}}]}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Build Artifacts: ", "marks": [{"type": "strong"}]}, {"type": "text", "text": "ARTIFACTS_URL_PLACEHOLDER", "marks": [{"type": "link", "attrs": {"href": "ARTIFACTS_URL_PLACEHOLDER"}}]}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Test Reports: ", "marks": [{"type": "strong"}]}, {"type": "text", "text": "TEST_URL_PLACEHOLDER", "marks": [{"type": "link", "attrs": {"href": "TEST_URL_PLACEHOLDER"}}]}]}]}
+          ]
+        }
+      ]
     },
     "issuetype": { "name": "Task" },
     "priority": { "name": "High" },
@@ -883,10 +931,16 @@ FAILEOF
 }
 JSONEOF
 
-                                FAILURE_TEXT=\$(cat ${ARTIFACTS_DIR}/failure-details.txt | sed 's/"/\\\\"/g' | awk '{printf "%s\\\\n", \$0}')
-
+                                # Replace all placeholders
                                 sed -i "s|FITNESS_TRACKER_PLACEHOLDER|${JOB_NAME} #${BUILD_NUMBER}|g" ${ARTIFACTS_DIR}/jira-payload.json
-                                sed -i "s|FAILURE_DETAILS_PLACEHOLDER|\$FAILURE_TEXT|g" ${ARTIFACTS_DIR}/jira-payload.json
+                                sed -i "s|JOB_PLACEHOLDER|${JOB_NAME}|g" ${ARTIFACTS_DIR}/jira-payload.json
+                                sed -i "s|BUILD_NUM_PLACEHOLDER|${BUILD_NUMBER}|g" ${ARTIFACTS_DIR}/jira-payload.json
+                                sed -i "s|BRANCH_PLACEHOLDER|${BRANCH_NAME}|g" ${ARTIFACTS_DIR}/jira-payload.json
+                                sed -i "s|STAGE_PLACEHOLDER|${failedStage}|g" ${ARTIFACTS_DIR}/jira-payload.json
+                                sed -i "s|DURATION_PLACEHOLDER|${buildDuration}|g" ${ARTIFACTS_DIR}/jira-payload.json
+                                sed -i "s|CONSOLE_URL_PLACEHOLDER|${BUILD_URL}console|g" ${ARTIFACTS_DIR}/jira-payload.json
+                                sed -i "s|ARTIFACTS_URL_PLACEHOLDER|${BUILD_URL}artifact/|g" ${ARTIFACTS_DIR}/jira-payload.json
+                                sed -i "s|TEST_URL_PLACEHOLDER|${BUILD_URL}testReport/|g" ${ARTIFACTS_DIR}/jira-payload.json
                                 sed -i "s|BRANCH_LABEL|${BRANCH_NAME}|g" ${ARTIFACTS_DIR}/jira-payload.json
 
                                 echo "📝 Creating Jira ticket with detailed failure information..."
