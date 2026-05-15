@@ -2,7 +2,7 @@ replicaCount: 4
 
 image:
   repository: anuddeeph2/fitness-tracker
-  tag: main-122
+  tag: main-123
   pullPolicy: Always
 
 service:
