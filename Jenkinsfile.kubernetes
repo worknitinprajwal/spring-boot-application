@@ -495,11 +495,15 @@ EOF
                         def ingressPort = env.BRANCH_NAME == 'develop' ? '8081' : '8082'
                         def ingressUrl = "http://${ingressHost}:${ingressPort}"
 
-                        // Use NodePort for health checks (works cross-cluster via Docker network IPs)
-                        // Use Ingress URL for JMeter/ZAP tests (better load handling, avoids cross-node NodePort issues)
-                        def nodePortUrl = env.BRANCH_NAME == 'develop' ?
-                            'http://172.18.0.5:30830' :
-                            'http://172.18.0.7:31397'
+                        // Query actual NodePort from the service
+                        def clusterIp = env.BRANCH_NAME == 'develop' ? '172.18.0.5' : '172.18.0.7'
+                        def targetContext = env.BRANCH_NAME == 'develop' ? 'kind-kind-dev' : 'kind-kind-test'
+                        def actualNodePort = sh(
+                            script: "kubectl --context=${targetContext} -n ${appNamespace} get svc fitness-tracker -o jsonpath='{.spec.ports[0].nodePort}'",
+                            returnStdout: true
+                        ).trim()
+
+                        def nodePortUrl = "http://${clusterIp}:${actualNodePort}"
 
                         env.HEALTH_CHECK_URL = nodePortUrl  // NodePort for quick health checks from Jenkins
                         env.APP_URL = ingressUrl  // Ingress URL for JMeter/ZAP load tests
