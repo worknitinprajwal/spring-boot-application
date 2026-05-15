@@ -201,7 +201,7 @@ spec:
                                 # Generate HTML report from scan results
                                 if [ -n "\${SCAN_ID}" ]; then
                                     echo "Generating HTML report..."
-                                    cat > ${ARTIFACTS_DIR}/aikido-report.html << 'HTMLEOF'
+                                    cat > ${ARTIFACTS_DIR}/aikido-report.html <<'HTMLEOF'
 <!DOCTYPE html>
 <html>
 <head>
@@ -301,11 +301,11 @@ spec:
         if (scanData && scanData.outcome && scanData.outcome.short_human_readable_message) {
             const msg = scanData.outcome.short_human_readable_message;
 
-            // Extract counts using regex (double backslash for Groovy heredoc)
-            const criticalMatch = msg.match(/(\\d+)\\s+new\\s+CRITICAL/i);
-            const highMatch = msg.match(/(\\d+)\\s+new\\s+HIGH/i);
-            const mediumMatch = msg.match(/(\\d+)\\s+new\\s+MEDIUM/i);
-            const lowMatch = msg.match(/(\\d+)\\s+new\\s+LOW/i);
+            // Extract counts using regex
+            const criticalMatch = msg.match(/(\d+)\s+new\s+CRITICAL/i);
+            const highMatch = msg.match(/(\d+)\s+new\s+HIGH/i);
+            const mediumMatch = msg.match(/(\d+)\s+new\s+MEDIUM/i);
+            const lowMatch = msg.match(/(\d+)\s+new\s+LOW/i);
 
             // Update the count elements
             const counts = document.querySelectorAll('.count');
