@@ -412,10 +412,10 @@ HTMLEOF
 import sys
 html = open('${ARTIFACTS_DIR}/aikido-report.html', 'r').read()
 json_data = open('${ARTIFACTS_DIR}/aikido-scan-details.json', 'r').read()
-print(f'DEBUG: JSON data length: {len(json_data)} bytes')
-print(f'DEBUG: Placeholder found: {\"AIKIDO_JSON_PLACEHOLDER\" in html}')
+print('DEBUG: JSON data length: ' + str(len(json_data)) + ' bytes')
+print('DEBUG: Placeholder found: ' + str('AIKIDO_JSON_PLACEHOLDER' in html))
 html = html.replace('AIKIDO_JSON_PLACEHOLDER', json_data)
-print(f'DEBUG: After replacement, placeholder still exists: {\"AIKIDO_JSON_PLACEHOLDER\" in html}')
+print('DEBUG: After replacement, placeholder still exists: ' + str('AIKIDO_JSON_PLACEHOLDER' in html))
 open('${ARTIFACTS_DIR}/aikido-report.html', 'w').write(html)
 "
 
