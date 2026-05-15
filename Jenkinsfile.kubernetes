@@ -463,6 +463,9 @@ PYEOF
         }
 
         stage('Docker Build & Push') {
+            when {
+                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
+            }
             steps {
                 container('kaniko') {
                     echo "🐳 Building Docker image with Kaniko..."
@@ -511,6 +514,12 @@ EOF
         }
 
         stage('Update Helm Chart') {
+            when {
+                expression {
+                    // Only update Helm chart if Docker build succeeded
+                    currentBuild.result == null || currentBuild.result == 'SUCCESS'
+                }
+            }
             steps {
                 container('maven') {
                     echo "📝 Updating Helm chart with new image tag..."
@@ -552,6 +561,12 @@ EOF
         }
 
         stage('ArgoCD Deployment') {
+            when {
+                expression {
+                    // Only deploy if Helm chart was updated successfully
+                    currentBuild.result == null || currentBuild.result == 'SUCCESS'
+                }
+            }
             steps {
                 container('maven') {
                     script {
@@ -583,6 +598,249 @@ EOF
                             """
                         }
                     }
+                }
+            }
+        }
+
+        stage('Wait for Deployment') {
+            when {
+                expression {
+                    currentBuild.result == null || currentBuild.result == 'SUCCESS'
+                }
+            }
+            steps {
+                container('maven') {
+                    script {
+                        def argoApp = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev' : 'fitness-tracker-test'
+                        def appUrl = env.BRANCH_NAME == 'develop' ?
+                            'http://fitness-tracker-dev.default.svc.cluster.local:8080' :
+                            'http://fitness-tracker-test.default.svc.cluster.local:8080'
+
+                        env.APP_URL = appUrl
+
+                        echo "⏳ Waiting for deployment to be ready..."
+                        sh """
+                            # Wait up to 5 minutes for app to be ready
+                            MAX_ATTEMPTS=30
+                            ATTEMPT=0
+
+                            while [ \$ATTEMPT -lt \$MAX_ATTEMPTS ]; do
+                                ATTEMPT=\$((ATTEMPT + 1))
+                                echo "Attempt \$ATTEMPT/\$MAX_ATTEMPTS: Checking ${appUrl}/actuator/health"
+
+                                if curl -s -f ${appUrl}/actuator/health > /dev/null 2>&1; then
+                                    echo "✅ Application is ready!"
+                                    exit 0
+                                fi
+
+                                echo "Not ready yet, waiting 10 seconds..."
+                                sleep 10
+                            done
+
+                            echo "❌ Application did not become ready in time"
+                            exit 1
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('API Testing - SoapUI') {
+            when {
+                expression {
+                    currentBuild.result == null || currentBuild.result == 'SUCCESS'
+                }
+            }
+            steps {
+                container('maven') {
+                    echo "🧪 Running SoapUI API tests..."
+                    script {
+                        sh """
+                            # Install SoapUI Open Source (command-line runner)
+                            if [ ! -f /tmp/SoapUI-5.7.0/bin/testrunner.sh ]; then
+                                echo "Installing SoapUI..."
+                                cd /tmp
+                                wget -q https://s3.amazonaws.com/downloads.eviware/soapuios/5.7.0/SoapUI-5.7.0-linux-bin.tar.gz
+                                tar -xzf SoapUI-5.7.0-linux-bin.tar.gz
+                            fi
+
+                            # Create test reports directory
+                            mkdir -p ${ARTIFACTS_DIR}/soapui-reports
+
+                            # Check if SoapUI project exists
+                            if [ -f "tests/soapui/fitness-tracker-api-tests.xml" ]; then
+                                echo "Running SoapUI tests..."
+                                /tmp/SoapUI-5.7.0/bin/testrunner.sh \\
+                                    -f${ARTIFACTS_DIR}/soapui-reports \\
+                                    -PENDPOINT=${env.APP_URL} \\
+                                    tests/soapui/fitness-tracker-api-tests.xml || echo "SoapUI tests failed (non-blocking)"
+                            else
+                                echo "⚠️ No SoapUI test project found at tests/soapui/fitness-tracker-api-tests.xml"
+                                echo "Creating placeholder report..."
+                                echo "SoapUI test project not configured yet" > ${ARTIFACTS_DIR}/soapui-reports/summary.txt
+                            fi
+
+                            echo "=== SoapUI API Testing ===" >> ${ARTIFACTS_DIR}/build-info.txt
+                            echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${ARTIFACTS_DIR}/build-info.txt
+                            echo "Target URL: ${env.APP_URL}" >> ${ARTIFACTS_DIR}/build-info.txt
+                        """
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'build-artifacts/soapui-reports/**/*', allowEmptyArchive: true
+                }
+            }
+        }
+
+        stage('Performance Testing - JMeter') {
+            when {
+                expression {
+                    currentBuild.result == null || currentBuild.result == 'SUCCESS'
+                }
+            }
+            steps {
+                container('maven') {
+                    echo "⚡ Running JMeter performance tests..."
+                    script {
+                        sh """
+                            # Install JMeter
+                            if [ ! -d /tmp/apache-jmeter-5.6.3 ]; then
+                                echo "Installing JMeter..."
+                                cd /tmp
+                                wget -q https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.6.3.tgz
+                                tar -xzf apache-jmeter-5.6.3.tgz
+                            fi
+
+                            # Create reports directory
+                            mkdir -p ${ARTIFACTS_DIR}/jmeter-reports
+
+                            # Check if JMeter test plan exists
+                            if [ -f "tests/jmeter/fitness-tracker-load-test.jmx" ]; then
+                                echo "Running JMeter tests..."
+                                /tmp/apache-jmeter-5.6.3/bin/jmeter -n \\
+                                    -t tests/jmeter/fitness-tracker-load-test.jmx \\
+                                    -JAPP_URL=${env.APP_URL} \\
+                                    -l ${ARTIFACTS_DIR}/jmeter-reports/results.jtl \\
+                                    -e -o ${ARTIFACTS_DIR}/jmeter-reports/html || echo "JMeter tests failed (non-blocking)"
+                            else
+                                echo "⚠️ No JMeter test plan found at tests/jmeter/fitness-tracker-load-test.jmx"
+                                echo "Creating placeholder report..."
+                                cat > ${ARTIFACTS_DIR}/jmeter-reports/summary.txt << 'JEOF'
+JMeter Performance Test - Not Configured
+
+To add performance tests:
+1. Create tests/jmeter/fitness-tracker-load-test.jmx
+2. Configure thread groups, samplers, and assertions
+3. Use \${APP_URL} variable for dynamic endpoint
+
+Sample test plan:
+- Thread Group: 10 users, 100 iterations
+- HTTP Samplers: GET /api/health, POST /api/workouts
+- Assertions: Response time < 500ms, Status code 200
+JEOF
+                            fi
+
+                            echo "=== JMeter Performance Testing ===" >> ${ARTIFACTS_DIR}/build-info.txt
+                            echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${ARTIFACTS_DIR}/build-info.txt
+                            echo "Target URL: ${env.APP_URL}" >> ${ARTIFACTS_DIR}/build-info.txt
+                        """
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'build-artifacts/jmeter-reports/**/*', allowEmptyArchive: true
+                    publishHTML(target: [
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'build-artifacts/jmeter-reports/html',
+                        reportFiles: 'index.html',
+                        reportName: 'JMeter Performance Report'
+                    ])
+                }
+            }
+        }
+
+        stage('Security Testing - OWASP ZAP') {
+            when {
+                expression {
+                    currentBuild.result == null || currentBuild.result == 'SUCCESS'
+                }
+            }
+            steps {
+                container('maven') {
+                    echo "🔐 Running OWASP ZAP security scan..."
+                    script {
+                        sh """
+                            # Install ZAP
+                            if [ ! -d /tmp/ZAP_2.14.0 ]; then
+                                echo "Installing OWASP ZAP..."
+                                cd /tmp
+                                wget -q https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2.14.0_Linux.tar.gz
+                                tar -xzf ZAP_2.14.0_Linux.tar.gz
+                            fi
+
+                            # Create reports directory
+                            mkdir -p ${ARTIFACTS_DIR}/zap-reports
+
+                            # Run ZAP baseline scan (non-intrusive, suitable for CI/CD)
+                            echo "Running ZAP baseline scan against ${env.APP_URL}..."
+
+                            # Start ZAP in daemon mode
+                            /tmp/ZAP_2.14.0/zap.sh -daemon -port 8090 -config api.disablekey=true &
+                            ZAP_PID=\$!
+
+                            # Wait for ZAP to start
+                            sleep 30
+
+                            # Run baseline scan
+                            /tmp/ZAP_2.14.0/zap-baseline.py \\
+                                -t ${env.APP_URL} \\
+                                -r ${ARTIFACTS_DIR}/zap-reports/baseline-report.html \\
+                                -x ${ARTIFACTS_DIR}/zap-reports/baseline-report.xml \\
+                                -J ${ARTIFACTS_DIR}/zap-reports/baseline-report.json \\
+                                -a || echo "ZAP scan completed with findings (non-blocking)"
+
+                            # Stop ZAP
+                            kill \$ZAP_PID || true
+
+                            # Create summary
+                            cat > ${ARTIFACTS_DIR}/zap-reports/summary.txt << 'ZEOF'
+OWASP ZAP Security Scan Summary
+
+Scan Type: Baseline (passive scan)
+Target: ${env.APP_URL}
+
+Reports:
+- HTML: baseline-report.html
+- XML: baseline-report.xml
+- JSON: baseline-report.json
+
+Note: This is a passive scan. For deeper security testing,
+configure an active scan in tests/zap/zap-config.conf
+ZEOF
+
+                            echo "=== OWASP ZAP Security Testing ===" >> ${ARTIFACTS_DIR}/build-info.txt
+                            echo "Scan Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${ARTIFACTS_DIR}/build-info.txt
+                            echo "Target URL: ${env.APP_URL}" >> ${ARTIFACTS_DIR}/build-info.txt
+                        """
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'build-artifacts/zap-reports/**/*', allowEmptyArchive: true
+                    publishHTML(target: [
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'build-artifacts/zap-reports',
+                        reportFiles: 'baseline-report.html',
+                        reportName: 'OWASP ZAP Security Report'
+                    ])
                 }
             }
         }
