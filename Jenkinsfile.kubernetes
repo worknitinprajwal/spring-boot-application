@@ -173,47 +173,23 @@ spec:
             steps {
                 container('maven') {
                     echo "🏗️ Building Spring Boot application..."
-                    sh """
-                        # Check if tests exist
-                        if [ -d "src/test/java" ]; then
-                            echo "📝 Running unit tests..."
-                            mvn -B clean test -Dmaven.repo.local=/root/.m2/repository
-                        else
-                            echo "⚠️  No unit tests found (src/test/java does not exist)"
-                        fi
-
-                        # Build the JAR
-                        echo "📦 Building JAR package..."
-                        mvn -B package -DskipTests -Dmaven.repo.local=/root/.m2/repository
-                    """
+                    sh 'mvn -B clean package -DskipTests=false -Dmaven.repo.local=/root/.m2/repository'
 
                     // Copy build artifacts
                     sh """
                         cp target/*.jar ${ARTIFACTS_DIR}/ || true
-                        if [ -d "target/surefire-reports" ]; then
-                            cp -r target/surefire-reports ${REPORTS_DIR}/unit-tests
-                        else
-                            mkdir -p ${REPORTS_DIR}/unit-tests
-                            echo "No unit tests were executed" > ${REPORTS_DIR}/unit-tests/README.txt
-                        fi
+                        cp -r target/surefire-reports ${REPORTS_DIR}/unit-tests || true
                     """
                 }
             }
             post {
                 always {
-                    // Archive JAR file
-                    archiveArtifacts artifacts: 'target/*.jar', allowEmptyArchive: true, fingerprint: true
+                    // Publish test results
+                    junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
 
-                    // Only process test results if they exist (avoid warnings when no tests present)
-                    script {
-                        if (fileExists('target/surefire-reports')) {
-                            echo "📊 Publishing unit test results..."
-                            junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
-                            archiveArtifacts artifacts: 'target/surefire-reports/**/*', allowEmptyArchive: true
-                        } else {
-                            echo "⚠️  No unit tests found - skipping test report publishing"
-                        }
-                    }
+                    // Archive test reports
+                    archiveArtifacts artifacts: 'target/*.jar', allowEmptyArchive: true, fingerprint: true
+                    archiveArtifacts artifacts: 'target/surefire-reports/**/*', allowEmptyArchive: true
                 }
             }
         }
@@ -481,138 +457,52 @@ EOF
                     script {
                         def argoApp = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev' : 'fitness-tracker-test'
                         def appNamespace = env.BRANCH_NAME == 'develop' ? 'dev' : 'test'
-                        def targetContext = env.BRANCH_NAME == 'develop' ? 'kind-kind-dev' : 'kind-kind-test'
-
-                        // Use localhost with port-forward for cross-cluster access from tests
-                        def localPort = env.BRANCH_NAME == 'develop' ? '8091' : '8092'
-                        def appUrl = "http://localhost:${localPort}"
-
-                        // Ingress URLs for browser access
-                        def ingressHost = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev.local' : 'fitness-tracker-test.local'
-                        def ingressPort = env.BRANCH_NAME == 'develop' ? '8081' : '8082'
-                        def ingressUrl = "http://${ingressHost}:${ingressPort}"
-                        def ingressUrlLocalhost = "http://localhost:${ingressPort}"
+                        def appUrl = env.BRANCH_NAME == 'develop' ?
+                            'http://172.18.0.5:30830' :
+                            'http://172.18.0.7:31397'
 
                         env.APP_URL = appUrl
-                        env.LOCAL_PORT = localPort
-                        env.TARGET_CONTEXT = targetContext
-                        env.APP_NAMESPACE = appNamespace
-                        env.INGRESS_HOST = ingressHost
-                        env.INGRESS_PORT = ingressPort
-                        env.INGRESS_URL = ingressUrl
-                        env.INGRESS_URL_LOCALHOST = ingressUrlLocalhost
 
-                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                        echo "📍 Deployment Information"
-                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                        echo "ArgoCD App: ${argoApp}"
-                        echo "Namespace: ${appNamespace}"
-                        echo "Target Cluster: ${targetContext}"
-                        echo ""
-                        echo "🧪 Test Access (internal):"
-                        echo "  URL: ${appUrl}"
-                        echo ""
-                        echo "🌐 Browser Access:"
-                        echo "  Ingress URL: ${ingressUrl}"
-                        echo "  Or via localhost: ${ingressUrlLocalhost}"
-                        echo ""
-                        echo "💡 Setup /etc/hosts (one-time):"
-                        echo "  Add to /etc/hosts: 127.0.0.1 ${ingressHost}"
-                        echo ""
-                        echo "🔗 Access URLs:"
-                        echo "  Health: ${ingressUrl}/actuator/health"
-                        echo "  Info:   ${ingressUrl}/actuator/info"
-                        echo "  Metrics: ${ingressUrl}/actuator/metrics"
-                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                        echo "📍 ArgoCD App: ${argoApp}"
+                        echo "📍 Namespace: ${appNamespace}"
+                        echo "📍 App URL (NodePort): ${appUrl}"
 
                         sh """
                             export KUBECONFIG=/root/.kube/config
 
-                            TARGET_CONTEXT="${targetContext}"
+                            TARGET_CONTEXT="${env.BRANCH_NAME == 'develop' ? 'kind-kind-dev' : 'kind-kind-test'}"
                             TARGET_NAMESPACE="${appNamespace}"
                             EXPECTED_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
-                            LOCAL_PORT="${localPort}"
 
                             echo "Expected Image: \$EXPECTED_IMAGE"
                             echo "Target: \$TARGET_CONTEXT / \$TARGET_NAMESPACE"
-                            echo "Local Port: \$LOCAL_PORT"
 
-                            MAX_ATTEMPTS=40
+                            MAX_ATTEMPTS=30
                             ATTEMPT=0
 
                             while [ \$ATTEMPT -lt \$MAX_ATTEMPTS ]; do
                                 ATTEMPT=\$((ATTEMPT + 1))
                                 echo "[\$ATTEMPT/\$MAX_ATTEMPTS] Checking deployment..."
 
-                                # Check if pod exists and is running
-                                POD_STATUS=\$(kubectl --context=\$TARGET_CONTEXT -n \$TARGET_NAMESPACE get pods -l app=fitness-tracker -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "")
                                 RUNNING_IMAGE=\$(kubectl --context=\$TARGET_CONTEXT -n \$TARGET_NAMESPACE get pods -l app=fitness-tracker -o jsonpath='{.items[0].spec.containers[0].image}' 2>/dev/null || echo "")
 
-                                echo "  Pod Status: \$POD_STATUS"
                                 echo "  Running Image: \$RUNNING_IMAGE"
 
-                                # First check if correct image is deployed
-                                if [ "\$RUNNING_IMAGE" = "\$EXPECTED_IMAGE" ] && [ "\$POD_STATUS" = "Running" ]; then
-                                    echo "  ✅ Correct image deployed and pod is running!"
-
-                                    # Set up port-forward to remote cluster for testing
-                                    echo "  🔗 Setting up kubectl port-forward to \$TARGET_CONTEXT..."
-                                    kubectl --context=\$TARGET_CONTEXT -n \$TARGET_NAMESPACE port-forward svc/fitness-tracker \$LOCAL_PORT:8080 > /tmp/port-forward.log 2>&1 &
-                                    PORT_FORWARD_PID=\$!
-                                    echo "  Port-forward started with PID: \$PORT_FORWARD_PID"
-
-                                    # Wait for port-forward to establish
-                                    sleep 3
-
-                                    # Verify port-forward is still running
-                                    if ! kill -0 \$PORT_FORWARD_PID 2>/dev/null; then
-                                        echo "  ⚠️ Port-forward failed to start, logs:"
-                                        cat /tmp/port-forward.log || true
-                                        echo "  Retrying in next attempt..."
-                                        sleep 5
-                                        continue
-                                    fi
-
-                                    # Check health endpoint via port-forward with retries
-                                    HEALTH_ATTEMPTS=0
-                                    while [ \$HEALTH_ATTEMPTS -lt 5 ]; do
-                                        HEALTH_ATTEMPTS=\$((HEALTH_ATTEMPTS + 1))
-
-                                        if curl -s -f --connect-timeout 5 --max-time 10 http://localhost:\$LOCAL_PORT/actuator/health > /dev/null 2>&1; then
-                                            HEALTH_RESPONSE=\$(curl -s --connect-timeout 5 --max-time 10 http://localhost:\$LOCAL_PORT/actuator/health)
-                                            if echo "\$HEALTH_RESPONSE" | grep -q '"status":"UP"'; then
-                                                echo ""
-                                                echo "  ✅ Health check passed with UP status!"
-                                                echo "  ✅ Port-forward active (PID \$PORT_FORWARD_PID)"
-                                                echo ""
-                                                echo "✅ Deployment verified successfully!"
-                                                echo "📝 Tests will use: http://localhost:\$LOCAL_PORT"
-                                                exit 0
-                                            fi
-                                        fi
-
-                                        echo "  Health check attempt \$HEALTH_ATTEMPTS/5 failed, retrying..."
-                                        sleep 3
-                                    done
-
-                                    echo "  ⚠️ Health checks failed, killing port-forward and retrying..."
-                                    kill \$PORT_FORWARD_PID 2>/dev/null || true
-                                    sleep 5
-                                else
-                                    if [ -z "\$RUNNING_IMAGE" ]; then
-                                        echo "  No pod found yet, waiting for deployment..."
+                                if [ "\$RUNNING_IMAGE" = "\$EXPECTED_IMAGE" ]; then
+                                    if curl -s -f ${appUrl}/actuator/health > /dev/null 2>&1; then
+                                        echo "✅ Correct image deployed and app is healthy!"
+                                        exit 0
                                     else
-                                        echo "  Image mismatch or pod not running, waiting for ArgoCD to sync..."
+                                        echo "  Image correct but app not healthy yet..."
                                     fi
+                                else
+                                    echo "  Image mismatch, waiting for ArgoCD to sync..."
                                 fi
 
                                 sleep 10
                             done
 
-                            echo "❌ Deployment verification failed after ~7 minutes"
-                            echo "Final pod status:"
-                            kubectl --context=\$TARGET_CONTEXT -n \$TARGET_NAMESPACE get pods -l app=fitness-tracker || true
-                            kubectl --context=\$TARGET_CONTEXT -n \$TARGET_NAMESPACE describe pods -l app=fitness-tracker || true
+                            echo "❌ Deployment verification failed after 5 minutes"
                             exit 1
                         """
                     }
@@ -808,7 +698,7 @@ EOF
                                     # Add to build info
                                     echo "=== REST API Functional Testing ===" >> \${ARTIFACTS_DIR}/build-info.txt
                                     echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Test URL (port-forward): \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
+                                    echo "Target URL: \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
                                     echo "Tests Passed: \${TESTS_PASSED}" >> \${ARTIFACTS_DIR}/build-info.txt
                                     echo "Tests Failed: \${TESTS_FAILED}" >> \${ARTIFACTS_DIR}/build-info.txt
 
@@ -871,7 +761,7 @@ HTMLEOF
 
                 stage('Performance Testing - JMeter') {
                     steps {
-                        container('maven') {
+                        container('jmeter') {
                             echo "⚡ Running comprehensive JMeter performance tests..."
                             script {
                                 sh script: """
@@ -882,60 +772,25 @@ HTMLEOF
                                         exit 1
                                     fi
 
-                                    # Pre-flight check - verify app is responding
-                                    echo "Running pre-flight health check..."
-                                    MAX_PREFLIGHT_ATTEMPTS=10
-                                    PREFLIGHT_ATTEMPT=0
-                                    while [ \$PREFLIGHT_ATTEMPT -lt \$MAX_PREFLIGHT_ATTEMPTS ]; do
-                                        PREFLIGHT_ATTEMPT=\$((PREFLIGHT_ATTEMPT + 1))
-                                        if curl -s -f --connect-timeout 5 --max-time 10 \${APP_URL}/actuator/health > /dev/null 2>&1; then
-                                            echo "✅ Pre-flight check passed - app is responding"
-                                            break
-                                        fi
-                                        echo "Pre-flight attempt \$PREFLIGHT_ATTEMPT/\$MAX_PREFLIGHT_ATTEMPTS failed, retrying in 5s..."
-                                        sleep 5
-                                    done
-
-                                    if [ \$PREFLIGHT_ATTEMPT -ge \$MAX_PREFLIGHT_ATTEMPTS ]; then
-                                        echo "❌ Pre-flight check failed - app not responding at \${APP_URL}"
-                                        echo "Skipping performance test to avoid false failures"
-                                        exit 1
-                                    fi
-
-                                    # Install JMeter if not available
-                                    if ! command -v jmeter &> /dev/null; then
-                                        echo "📥 Installing JMeter..."
-                                        cd /tmp
-                                        wget -q https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.5.tgz
-                                        tar -xzf apache-jmeter-5.5.tgz
-                                        export PATH=\$PATH:/tmp/apache-jmeter-5.5/bin
-                                        cd -
-                                        echo "✅ JMeter installed"
-                                    fi
-
                                     echo "Running JMeter load test against \${APP_URL}..."
                                     echo "Configuration: 50 threads, 30s ramp-up, 120s duration"
 
-                                    # Extract domain and port from APP_URL for JMeter
-                                    APP_DOMAIN=\$(echo "\${APP_URL}" | sed -E 's|https?://([^:/]+).*|\\1|')
-                                    APP_PORT=\$(echo "\${APP_URL}" | sed -E 's|https?://[^:]+:([0-9]+).*|\\1|')
+                                    # Extract host and port from APP_URL for JMeter
+                                    TARGET_HOST=\$(echo "\${APP_URL}" | sed -E 's|https?://([^:/]+).*|\\1|')
+                                    TARGET_PORT=\$(echo "\${APP_URL}" | sed -E 's|https?://[^:]+:([0-9]+).*|\\1|')
 
-                                    # If port not found in URL, use default (80 for http, 443 for https)
-                                    if [ "\${APP_PORT}" = "\${APP_URL}" ]; then
-                                        if echo "\${APP_URL}" | grep -q "^https"; then
-                                            APP_PORT=443
-                                        else
-                                            APP_PORT=80
-                                        fi
+                                    # If port extraction didn't work (no port in URL), use default 80
+                                    if [ "\${TARGET_PORT}" = "\${APP_URL}" ]; then
+                                        TARGET_PORT=80
                                     fi
 
-                                    echo "Using domain: \${APP_DOMAIN}, port: \${APP_PORT}"
+                                    echo "Extracted TARGET_HOST=\${TARGET_HOST}, TARGET_PORT=\${TARGET_PORT}"
 
                                     # Run JMeter with production-level configuration
                                     jmeter -n \\
                                         -t tests/jmeter/fitness-tracker-load-test.jmx \\
-                                        -JAPP_DOMAIN=\${APP_DOMAIN} \\
-                                        -JAPP_PORT=\${APP_PORT} \\
+                                        -JTARGET_HOST=\${TARGET_HOST} \\
+                                        -JTARGET_PORT=\${TARGET_PORT} \\
                                         -JTHREADS=50 \\
                                         -JRAMP_UP=30 \\
                                         -JDURATION=120 \\
@@ -1054,10 +909,10 @@ AWKEOF
 
                                         awk -f /tmp/jmeter-analyze.awk \${ARTIFACTS_DIR}/jmeter-reports/results.jtl | tee \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
 
-                                        # Install bc for SLA validation math
+                                        # Install bc for math calculations if not available
                                         if ! command -v bc &> /dev/null; then
-                                            echo "📥 Installing bc for math calculations..."
-                                            apt-get update -qq && apt-get install -y -qq bc
+                                            echo "📥 Installing bc for SLA validation..."
+                                            apk add --no-cache bc 2>/dev/null || echo "Warning: bc not available in this container"
                                         fi
 
                                         # Parse metrics and enforce SLAs
@@ -1089,8 +944,7 @@ AWKEOF
                                         # Add to build info
                                         echo "=== JMeter Performance Testing ===" >> \${ARTIFACTS_DIR}/build-info.txt
                                         echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
-                                        echo "Internal URL: \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
-                                        echo "External URL: \${EXTERNAL_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
+                                        echo "Target URL: \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
                                         echo "Load: 50 threads, 30s ramp-up, 120s duration" >> \${ARTIFACTS_DIR}/build-info.txt
                                         echo "Success Rate: \${SUCCESS_RATE}%" >> \${ARTIFACTS_DIR}/build-info.txt
                                         echo "Avg Response Time: \${AVG_TIME}ms" >> \${ARTIFACTS_DIR}/build-info.txt
@@ -1134,67 +988,29 @@ AWKEOF
 
                 stage('Security Testing - OWASP ZAP') {
                     steps {
-                        container('maven') {
+                        container('zap') {
                             echo "🔐 Running comprehensive OWASP ZAP security scan..."
                             script {
                                 sh script: """
                                     set +e  # Don't fail immediately on ZAP errors (it returns non-zero on findings)
 
-                                    # Pre-flight check - verify app is responding
-                                    echo "Running pre-flight health check..."
-                                    MAX_PREFLIGHT_ATTEMPTS=10
-                                    PREFLIGHT_ATTEMPT=0
-                                    while [ \$PREFLIGHT_ATTEMPT -lt \$MAX_PREFLIGHT_ATTEMPTS ]; do
-                                        PREFLIGHT_ATTEMPT=\$((PREFLIGHT_ATTEMPT + 1))
-                                        if curl -s -f --connect-timeout 5 --max-time 10 \${APP_URL}/actuator/health > /dev/null 2>&1; then
-                                            echo "✅ Pre-flight check passed - app is responding"
-                                            break
-                                        fi
-                                        echo "Pre-flight attempt \$PREFLIGHT_ATTEMPT/\$MAX_PREFLIGHT_ATTEMPTS failed, retrying in 5s..."
-                                        sleep 5
-                                    done
-
-                                    if [ \$PREFLIGHT_ATTEMPT -ge \$MAX_PREFLIGHT_ATTEMPTS ]; then
-                                        echo "❌ Pre-flight check failed - app not responding at \${APP_URL}"
-                                        echo "Skipping security scan to avoid false failures"
-                                        exit 1
-                                    fi
-
-                                    # Install ZAP if not available
-                                    if ! command -v zap-baseline.py &> /dev/null; then
-                                        echo "📥 Installing OWASP ZAP..."
-                                        # Install minimal dependencies only
-                                        if ! command -v python3 &> /dev/null || ! command -v wget &> /dev/null; then
-                                            apt-get update -qq
-                                            apt-get install -y -qq --no-install-recommends python3 wget openjdk-11-jre-headless
-                                            apt-get clean && rm -rf /var/lib/apt/lists/*
-                                        fi
-
-                                        # Download and install ZAP
-                                        cd /tmp
-                                        if [ ! -d "/tmp/ZAP_2.14.0" ]; then
-                                            wget -q https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2.14.0_Linux.tar.gz
-                                            tar -xzf ZAP_2.14.0_Linux.tar.gz
-                                            rm ZAP_2.14.0_Linux.tar.gz
-                                        fi
-                                        export PATH=\$PATH:/tmp/ZAP_2.14.0
-                                        cd -
-                                        echo "✅ ZAP installed"
-                                    fi
-
                                     echo "🔐 Running ZAP baseline scan against \${APP_URL}..."
-                                    mkdir -p \${ARTIFACTS_DIR}/zap-reports
+                                    mkdir -p /zap/wrk/reports
 
-                                    # Run ZAP baseline scan
+                                    # Run ZAP baseline scan on actuator endpoints (root returns 404 which breaks ZAP)
                                     ZAP_EXIT_CODE=0
                                     zap-baseline.py \\
-                                        -t \${APP_URL} \\
-                                        -r \${ARTIFACTS_DIR}/zap-reports/baseline-report.html \\
-                                        -w \${ARTIFACTS_DIR}/zap-reports/baseline-report.md \\
-                                        -x \${ARTIFACTS_DIR}/zap-reports/baseline-report.xml \\
-                                        -J \${ARTIFACTS_DIR}/zap-reports/baseline-report.json || ZAP_EXIT_CODE=\$?
+                                        -t \${APP_URL}/actuator/health \\
+                                        -r /zap/wrk/reports/baseline-report.html \\
+                                        -w /zap/wrk/reports/baseline-report.md \\
+                                        -x /zap/wrk/reports/baseline-report.xml \\
+                                        -J /zap/wrk/reports/baseline-report.json || ZAP_EXIT_CODE=\$?
 
                                     echo "ZAP scan completed with exit code: \${ZAP_EXIT_CODE}"
+
+                                    # Copy reports to artifacts directory
+                                    mkdir -p \${ARTIFACTS_DIR}/zap-reports
+                                    cp -r /zap/wrk/reports/* \${ARTIFACTS_DIR}/zap-reports/ 2>/dev/null || true
 
                                     # Install jq if not available (needed for JSON parsing)
                                     if ! command -v jq &> /dev/null; then
@@ -1260,8 +1076,7 @@ ZAPEOF
                                             # Add to build info
                                             echo "=== OWASP ZAP Security Scan ===" >> \${ARTIFACTS_DIR}/build-info.txt
                                             echo "Scan Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
-                                            echo "Internal URL: \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
-                                            echo "External URL: \${EXTERNAL_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
+                                            echo "Target: \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
                                             echo "High Severity: \${HIGH}" >> \${ARTIFACTS_DIR}/build-info.txt
                                             echo "Medium Severity: \${MEDIUM}" >> \${ARTIFACTS_DIR}/build-info.txt
                                             echo "Low Severity: \${LOW}" >> \${ARTIFACTS_DIR}/build-info.txt
@@ -1721,13 +1536,6 @@ EOF
             echo "🐳 Image: ${IMAGE_NAME}:${IMAGE_TAG}"
             echo "📊 Artifacts: ${BUILD_URL}artifact/"
             echo "📈 Reports: ${BUILD_URL}"
-            echo ""
-            echo "🌐 Access Your Application in Chrome:"
-            echo "  ${env.INGRESS_URL}/actuator/health"
-            echo "  ${env.INGRESS_URL}/actuator/info"
-            echo ""
-            echo "💡 Or via localhost:"
-            echo "  ${env.INGRESS_URL_LOCALHOST}/actuator/health"
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         }
         failure {
