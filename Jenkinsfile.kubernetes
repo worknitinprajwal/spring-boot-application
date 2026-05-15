@@ -201,14 +201,19 @@ spec:
             }
             post {
                 always {
-                    // Publish test results (only if they exist)
-                    junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
-
                     // Archive JAR file
                     archiveArtifacts artifacts: 'target/*.jar', allowEmptyArchive: true, fingerprint: true
 
-                    // Archive test reports if they exist
-                    archiveArtifacts artifacts: 'target/surefire-reports/**/*', allowEmptyArchive: true
+                    // Only process test results if they exist (avoid warnings when no tests present)
+                    script {
+                        if (fileExists('target/surefire-reports')) {
+                            echo "📊 Publishing unit test results..."
+                            junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
+                            archiveArtifacts artifacts: 'target/surefire-reports/**/*', allowEmptyArchive: true
+                        } else {
+                            echo "⚠️  No unit tests found - skipping test report publishing"
+                        }
+                    }
                 }
             }
         }
