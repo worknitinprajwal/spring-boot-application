@@ -602,24 +602,31 @@ EOF
                                         # Generate CSV summary for metrics analysis
                                         if [ -f "\${ARTIFACTS_DIR}/jmeter-reports/results.jtl" ]; then
                                             echo "Generating performance metrics summary..."
-                                            awk -F',' 'NR>1 {
-                                                sum+=\\$2;
-                                                count++;
-                                                if(\\$2>max) max=\\$2;
-                                                if(min=="" || \\$2<min) min=\\$2;
-                                                if(\\$8=="true") success++;
-                                                else failed++;
-                                            } END {
-                                                print "=== Performance Metrics ==="
-                                                print "Total Requests: " count
-                                                print "Successful: " success
-                                                print "Failed: " failed
-                                                print "Success Rate: " (success*100/count) "%"
-                                                print "Avg Response Time: " (sum/count) " ms"
-                                                print "Min Response Time: " min " ms"
-                                                print "Max Response Time: " max " ms"
-                                            }' \${ARTIFACTS_DIR}/jmeter-reports/results.jtl > \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
 
+                                            # Use awk to analyze JMeter results
+                                            cat > /tmp/jmeter-analyze.awk << 'AWKEOF'
+BEGIN { FS="," }
+NR>1 {
+    sum+=\$2;
+    count++;
+    if(\$2>max) max=\$2;
+    if(min=="" || \$2<min) min=\$2;
+    if(\$8=="true") success++;
+    else failed++;
+}
+END {
+    print "=== Performance Metrics ==="
+    print "Total Requests: " count
+    print "Successful: " success
+    print "Failed: " failed
+    print "Success Rate: " (success*100/count) "%"
+    print "Avg Response Time: " (sum/count) " ms"
+    print "Min Response Time: " min " ms"
+    print "Max Response Time: " max " ms"
+}
+AWKEOF
+
+                                            awk -f /tmp/jmeter-analyze.awk \${ARTIFACTS_DIR}/jmeter-reports/results.jtl > \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
                                             cat \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
                                         fi
                                     else
