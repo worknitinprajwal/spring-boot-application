@@ -551,14 +551,13 @@ EOF
                         container('maven') {
                             echo "🧪 Running SoapUI API tests via Maven..."
                             script {
-                                def appUrl = env.APP_URL
-                                sh """
+                                sh script: """
                                     # Use SoapUI Maven plugin - most reliable in CI
                                     if [ -f "pom.xml" ]; then
-                                        echo "Running SoapUI tests against ${appUrl}..."
+                                        echo "Running SoapUI tests against \${APP_URL}..."
                                         mvn com.smartbear.soapui:soapui-maven-plugin:test \
                                             -DprojectFile=tests/soapui/fitness-tracker-api-tests.xml \
-                                            -Dendpoint=${appUrl} \
+                                            -Dendpoint=\${APP_URL} \
                                             -DoutputFolder=\${ARTIFACTS_DIR}/soapui-reports \
                                             -Dmaven.repo.local=/root/.m2/repository || echo "⚠️ SoapUI tests failed (non-blocking)"
                                     else
@@ -568,8 +567,8 @@ EOF
 
                                     echo "=== SoapUI API Testing ===" >> \${ARTIFACTS_DIR}/build-info.txt
                                     echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Target URL: ${appUrl}" >> \${ARTIFACTS_DIR}/build-info.txt
-                                """
+                                    echo "Target URL: \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
+                                """, returnStdout: false
                             }
                         }
                     }
@@ -585,15 +584,14 @@ EOF
                         container('jmeter') {  // Using JMeter container!
                             echo "⚡ Running JMeter performance tests..."
                             script {
-                                def appUrl = env.APP_URL
-                                sh """
+                                sh script: """
                                     if [ -f "tests/jmeter/fitness-tracker-load-test.jmx" ]; then
-                                        echo "Running JMeter performance tests against ${appUrl}..."
+                                        echo "Running JMeter performance tests against \${APP_URL}..."
 
                                         # Run JMeter with production-level configuration
                                         jmeter -n \\
                                             -t tests/jmeter/fitness-tracker-load-test.jmx \\
-                                            -JAPP_URL=${appUrl} \\
+                                            -JAPP_URL=\${APP_URL} \\
                                             -JTHREADS=50 \\
                                             -JRAMP_UP=30 \\
                                             -JDURATION=120 \\
@@ -632,9 +630,9 @@ EOF
 
                                     echo "=== JMeter Performance Testing ===" >> \${ARTIFACTS_DIR}/build-info.txt
                                     echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Target URL: ${appUrl}" >> \${ARTIFACTS_DIR}/build-info.txt
+                                    echo "Target URL: \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
                                     echo "Load Configuration: 50 threads, 30s ramp-up, 120s duration" >> \${ARTIFACTS_DIR}/build-info.txt
-                                """
+                                """, returnStdout: false
                             }
                         }
                     }
@@ -658,16 +656,15 @@ EOF
                         container('zap') {  // Using ZAP container!
                             echo "🔐 Running OWASP ZAP security scan..."
                             script {
-                                def appUrl = env.APP_URL
-                                sh """
-                                    echo "🔐 Running ZAP baseline scan against ${appUrl}..."
+                                sh script: """
+                                    echo "🔐 Running ZAP baseline scan against \${APP_URL}..."
 
                                     # Create reports directory in ZAP working directory
                                     mkdir -p /zap/wrk/reports
 
                                     # Run ZAP baseline scan (built into the container)
                                     zap-baseline.py \\
-                                        -t ${appUrl} \\
+                                        -t \${APP_URL} \\
                                         -r /zap/wrk/reports/baseline-report.html \\
                                         -w /zap/wrk/reports/baseline-report.md \\
                                         -x /zap/wrk/reports/baseline-report.xml \\
@@ -681,7 +678,7 @@ EOF
                                     if [ -f "\${ARTIFACTS_DIR}/zap-reports/baseline-report.json" ]; then
                                         echo "=== Security Scan Results ===" > \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
                                         echo "Scan completed at: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
-                                        echo "Target: ${appUrl}" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                        echo "Target: \${APP_URL}" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
                                         echo "" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
 
                                         # Count alerts by risk level if jq is available
@@ -692,7 +689,7 @@ EOF
 
                                         cat \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
                                     fi
-                                """
+                                """, returnStdout: false
                             }
                         }
                     }
