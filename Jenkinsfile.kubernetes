@@ -173,23 +173,47 @@ spec:
             steps {
                 container('maven') {
                     echo "🏗️ Building Spring Boot application..."
-                    sh 'mvn -B clean package -DskipTests=false -Dmaven.repo.local=/root/.m2/repository'
+                    sh """
+                        # Check if tests exist
+                        if [ -d "src/test/java" ]; then
+                            echo "📝 Running unit tests..."
+                            mvn -B clean test -Dmaven.repo.local=/root/.m2/repository
+                        else
+                            echo "⚠️  No unit tests found (src/test/java does not exist)"
+                        fi
+
+                        # Build the JAR
+                        echo "📦 Building JAR package..."
+                        mvn -B package -DskipTests -Dmaven.repo.local=/root/.m2/repository
+                    """
 
                     // Copy build artifacts
                     sh """
                         cp target/*.jar ${ARTIFACTS_DIR}/ || true
-                        cp -r target/surefire-reports ${REPORTS_DIR}/unit-tests || true
+                        if [ -d "target/surefire-reports" ]; then
+                            cp -r target/surefire-reports ${REPORTS_DIR}/unit-tests
+                        else
+                            mkdir -p ${REPORTS_DIR}/unit-tests
+                            echo "No unit tests were executed" > ${REPORTS_DIR}/unit-tests/README.txt
+                        fi
                     """
                 }
             }
             post {
                 always {
-                    // Publish test results
-                    junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
-
-                    // Archive test reports
+                    // Archive JAR file
                     archiveArtifacts artifacts: 'target/*.jar', allowEmptyArchive: true, fingerprint: true
-                    archiveArtifacts artifacts: 'target/surefire-reports/**/*', allowEmptyArchive: true
+
+                    // Only process test results if they exist (avoid warnings when no tests present)
+                    script {
+                        if (fileExists('target/surefire-reports')) {
+                            echo "📊 Publishing unit test results..."
+                            junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
+                            archiveArtifacts artifacts: 'target/surefire-reports/**/*', allowEmptyArchive: true
+                        } else {
+                            echo "⚠️  No unit tests found - skipping test report publishing"
+                        }
+                    }
                 }
             }
         }
