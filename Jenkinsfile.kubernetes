@@ -190,11 +190,28 @@ spec:
                                     echo "Fetching detailed results for scan ID: \${SCAN_ID}"
                                     curl -s -H "X-AIK-API-SECRET: \${AIKIDO_CLIENT_API_KEY}" \
                                       "https://app.aikido.dev/api/integrations/continuous_integration/scan/repository?scan_id=\${SCAN_ID}" \
-                                      > ${ARTIFACTS_DIR}/aikido-scan-details.json || echo "Failed to fetch details"
+                                      > ${ARTIFACTS_DIR}/aikido-scan-details.json || echo "❌ Failed to fetch details from API"
+
+                                    # Verify we got valid JSON
+                                    if [ -f "${ARTIFACTS_DIR}/aikido-scan-details.json" ]; then
+                                        echo "DEBUG: aikido-scan-details.json exists"
+                                        echo "DEBUG: File size: \$(wc -c < ${ARTIFACTS_DIR}/aikido-scan-details.json) bytes"
+                                        echo "DEBUG: First 200 chars:"
+                                        head -c 200 ${ARTIFACTS_DIR}/aikido-scan-details.json
+                                        echo ""
+                                    else
+                                        echo "❌ aikido-scan-details.json was not created!"
+                                    fi
 
                                     # Pretty print JSON if jq available
                                     if command -v jq >/dev/null 2>&1; then
-                                        cat ${ARTIFACTS_DIR}/aikido-scan-details.json | jq '.' > ${ARTIFACTS_DIR}/aikido-scan-details-formatted.json 2>/dev/null || true
+                                        if jq empty ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null; then
+                                            echo "✅ JSON is valid"
+                                            cat ${ARTIFACTS_DIR}/aikido-scan-details.json | jq '.' > ${ARTIFACTS_DIR}/aikido-scan-details-formatted.json
+                                        else
+                                            echo "❌ JSON is invalid or malformed!"
+                                            cat ${ARTIFACTS_DIR}/aikido-scan-details.json
+                                        fi
                                     fi
                                 fi
 
