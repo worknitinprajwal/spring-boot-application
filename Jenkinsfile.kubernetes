@@ -413,27 +413,24 @@ HTMLEOF
                                             ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp
                                         mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
 
-                                        # Inject JSON - use Python for simple, safe replacement (no escaping issues)
-                                        echo "DEBUG: Checking if AIKIDO_JSON_PLACEHOLDER exists before replacement..."
-                                        grep -c "AIKIDO_JSON_PLACEHOLDER" ${ARTIFACTS_DIR}/aikido-report.html || echo "PLACEHOLDER NOT FOUND!"
+                                        # Create separate JS file with scan data (avoids all escaping issues!)
+                                        echo "const aikidoScanData = " > ${ARTIFACTS_DIR}/aikido-scan-data.js
+                                        cat ${ARTIFACTS_DIR}/aikido-scan-details.json >> ${ARTIFACTS_DIR}/aikido-scan-data.js
+                                        echo ";" >> ${ARTIFACTS_DIR}/aikido-scan-data.js
 
-                                        python3 -c "
-import sys
-html = open('${ARTIFACTS_DIR}/aikido-report.html', 'r').read()
-json_data = open('${ARTIFACTS_DIR}/aikido-scan-details.json', 'r').read()
-print('DEBUG: JSON data length: ' + str(len(json_data)) + ' bytes')
-print('DEBUG: Placeholder found: ' + str('AIKIDO_JSON_PLACEHOLDER' in html))
-html = html.replace('AIKIDO_JSON_PLACEHOLDER', json_data)
-print('DEBUG: After replacement, placeholder still exists: ' + str('AIKIDO_JSON_PLACEHOLDER' in html))
-open('${ARTIFACTS_DIR}/aikido-report.html', 'w').write(html)
-"
+                                        echo "✅ Created aikido-scan-data.js"
+                                        echo "File size: \$(wc -c < ${ARTIFACTS_DIR}/aikido-scan-data.js) bytes"
 
-                                        echo "DEBUG: Checking if AIKIDO_JSON_PLACEHOLDER was replaced..."
-                                        grep -c "AIKIDO_JSON_PLACEHOLDER" ${ARTIFACTS_DIR}/aikido-report.html || echo "✅ Placeholder replaced!"
-                                        echo "DEBUG: Checking if JSON data is in HTML..."
-                                        grep -c "gate_passed" ${ARTIFACTS_DIR}/aikido-report.html || echo "❌ JSON not found in HTML!"
+                                        # Remove the placeholder script tag and add external JS reference
+                                        sed -i.bak 's|<script id="aikido-data" type="application/json">AIKIDO_JSON_PLACEHOLDER</script>|<script src="aikido-scan-data.js"></script>|' ${ARTIFACTS_DIR}/aikido-report.html
 
-                                        echo "✅ HTML report generated with embedded Aikido JSON data"
+                                        # Update JavaScript to use the external variable
+                                        sed -i.bak "s|let scanData = {};|let scanData = aikidoScanData || {};|" ${ARTIFACTS_DIR}/aikido-report.html
+                                        sed -i.bak '/const jsonElement = document.getElementById/,/console.error.*Length:/d' ${ARTIFACTS_DIR}/aikido-report.html
+
+                                        rm -f ${ARTIFACTS_DIR}/aikido-report.html.bak
+
+                                        echo "✅ HTML report configured to load external JS data"
                                     fi
                                 fi
 
@@ -464,6 +461,7 @@ open('${ARTIFACTS_DIR}/aikido-report.html', 'w').write(html)
                     // Archive security scan results
                     archiveArtifacts artifacts: 'build-artifacts/aikido-scan-output.txt', allowEmptyArchive: true
                     archiveArtifacts artifacts: 'build-artifacts/aikido-scan-details*.json', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'build-artifacts/aikido-scan-data.js', allowEmptyArchive: true
                     archiveArtifacts artifacts: 'build-artifacts/aikido-report.html', allowEmptyArchive: true
                     archiveArtifacts artifacts: 'build-artifacts/build-info.txt', allowEmptyArchive: true
 
