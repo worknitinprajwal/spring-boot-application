@@ -760,7 +760,7 @@ EOF
                                 cd /tmp
                                 timeout 360 wget --progress=dot:giga https://s3.amazonaws.com/downloads.eviware/soapuios/5.7.0/SoapUI-5.7.0-linux-bin.tar.gz || {
                                     echo "❌ SoapUI download failed/timeout, will skip SoapUI tests"
-                                    touch /tmp/soapui-download-failed
+                                    touch ${WORKSPACE}/.soapui-download-failed
                                     exit 0
                                 }
                                 tar -xzf SoapUI-5.7.0-linux-bin.tar.gz && rm SoapUI-5.7.0-linux-bin.tar.gz
@@ -777,7 +777,7 @@ EOF
                                     echo "⚠️ Apache archive slow, trying mirror..."
                                     timeout 300 wget --progress=dot:giga https://dlcdn.apache.org/jmeter/binaries/apache-jmeter-5.6.3.tgz || {
                                         echo "❌ JMeter download failed/timeout, will skip JMeter tests"
-                                        touch /tmp/jmeter-download-failed
+                                        touch ${WORKSPACE}/.jmeter-download-failed
                                         exit 0
                                     }
                                 }
@@ -793,7 +793,7 @@ EOF
                                 cd /tmp
                                 timeout 600 wget --progress=dot:mega https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2.14.0_Linux.tar.gz || {
                                     echo "❌ ZAP download failed/timeout, will skip ZAP tests"
-                                    touch /tmp/zap-download-failed
+                                    touch ${WORKSPACE}/.zap-download-failed
                                     exit 0
                                 }
                                 tar -xzf ZAP_2.14.0_Linux.tar.gz && rm ZAP_2.14.0_Linux.tar.gz
@@ -824,7 +824,7 @@ EOF
                                 sh """
                                     mkdir -p ${ARTIFACTS_DIR}/soapui-reports
 
-                                    if [ -f /tmp/soapui-download-failed ]; then
+                                    if [ -f ${WORKSPACE}/.soapui-download-failed ]; then
                                         echo "⚠️ SoapUI not installed (download failed), skipping tests"
                                         echo "SoapUI download failed during installation" > ${ARTIFACTS_DIR}/soapui-reports/summary.txt
                                         exit 0
@@ -868,7 +868,7 @@ EOF
                         sh """
                             mkdir -p ${ARTIFACTS_DIR}/jmeter-reports
 
-                            if [ -f /tmp/jmeter-download-failed ]; then
+                            if [ -f ${WORKSPACE}/.jmeter-download-failed ]; then
                                 echo "⚠️ JMeter not installed (download failed), skipping tests"
                                 echo "JMeter download failed during installation" > ${ARTIFACTS_DIR}/jmeter-reports/summary.txt
                                 exit 0
@@ -934,7 +934,7 @@ JEOF
                             mkdir -p ${ARTIFACTS_DIR}/zap-reports
 
                             # Check if ZAP download failed in installation stage
-                            if [ -f /tmp/zap-download-failed ]; then
+                            if [ -f ${WORKSPACE}/.zap-download-failed ]; then
                                 echo "⚠️ ZAP was not installed (download failed), skipping scan"
                                 echo "ZAP download failed during installation" > ${ARTIFACTS_DIR}/zap-reports/summary.txt
                                 exit 0
