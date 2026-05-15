@@ -1031,7 +1031,12 @@ ZAPEOF
                                             echo "Detailed Findings:" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
                                             echo "" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
 
-                                            jq -r '.site[0].alerts[] | "[\(.riskdesc)] \(.alert)\n  Description: \(.desc | gsub("<[^>]*>"; "") | .[0:200])...\n  Solution: \(.solution | gsub("<[^>]*>"; "") | .[0:150])...\n  Count: \(.count) instances\n  Confidence: \(.confidence)\n"' \${ARTIFACTS_DIR}/zap-reports/baseline-report.json >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt 2>/dev/null || echo "Unable to parse detailed findings" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                            # Create jq filter in a file to avoid escaping issues
+                                            cat > /tmp/zap-filter.jq << 'JQEOF'
+.site[0].alerts[] | "[\(.riskdesc)] \(.alert)\n  Description: \(.desc | gsub("<[^>]*>"; "") | .[0:200])...\n  Solution: \(.solution | gsub("<[^>]*>"; "") | .[0:150])...\n  Count: \(.count) instances\n  Confidence: \(.confidence)\n"
+JQEOF
+
+                                            jq -r -f /tmp/zap-filter.jq \${ARTIFACTS_DIR}/zap-reports/baseline-report.json >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt 2>/dev/null || echo "Unable to parse detailed findings" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
 
                                             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
                                             echo "Security Assessment:" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
