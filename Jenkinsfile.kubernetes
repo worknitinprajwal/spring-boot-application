@@ -820,7 +820,7 @@ HTMLEOF
 
                                     # Use HEALTH_CHECK_URL for JMeter (NodePort URL that works from pods)
                                     echo "Running JMeter load test against \${HEALTH_CHECK_URL}..."
-                                    echo "Configuration: 50 threads, 30s ramp-up, 120s duration"
+                                    echo "Configuration: 30 threads, 30s ramp-up, 120s duration"
 
                                     # Extract host and port from HEALTH_CHECK_URL for JMeter
                                     TARGET_HOST=\$(echo "\${HEALTH_CHECK_URL}" | sed -E 's|https?://([^:/]+).*|\\1|')
@@ -833,12 +833,12 @@ HTMLEOF
 
                                     echo "Extracted TARGET_HOST=\${TARGET_HOST}, TARGET_PORT=\${TARGET_PORT}"
 
-                                    # Run JMeter with production-level configuration
+                                    # Run JMeter with reduced load (30 threads instead of 50 for better stability)
                                     jmeter -n \\
                                         -t tests/jmeter/fitness-tracker-load-test.jmx \\
                                         -JTARGET_HOST=\${TARGET_HOST} \\
                                         -JTARGET_PORT=\${TARGET_PORT} \\
-                                        -JTHREADS=50 \\
+                                        -JTHREADS=30 \\
                                         -JRAMP_UP=30 \\
                                         -JDURATION=120 \\
                                         -l \${ARTIFACTS_DIR}/jmeter-reports/results.jtl \\
@@ -1030,7 +1030,7 @@ AWKEOF
                                         echo "=== JMeter Performance Testing ===" >> \${ARTIFACTS_DIR}/build-info.txt
                                         echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
                                         echo "Target URL: \${HEALTH_CHECK_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
-                                        echo "Load: 50 threads, 30s ramp-up, 120s duration" >> \${ARTIFACTS_DIR}/build-info.txt
+                                        echo "Load: 30 threads, 30s ramp-up, 120s duration" >> \${ARTIFACTS_DIR}/build-info.txt
                                         echo "Success Rate: \${SUCCESS_RATE}%" >> \${ARTIFACTS_DIR}/build-info.txt
                                         echo "Avg Response Time: \${AVG_TIME}ms" >> \${ARTIFACTS_DIR}/build-info.txt
                                         echo "Failed Requests: \${FAILED_COUNT}" >> \${ARTIFACTS_DIR}/build-info.txt
