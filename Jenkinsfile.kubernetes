@@ -457,15 +457,25 @@ EOF
                     script {
                         def argoApp = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev' : 'fitness-tracker-test'
                         def appNamespace = env.BRANCH_NAME == 'develop' ? 'dev' : 'test'
+
+                        // Use internal Kubernetes service DNS for in-cluster access
+                        // Format: <service-name>.<namespace>.svc.cluster.local:<port>
                         def appUrl = env.BRANCH_NAME == 'develop' ?
+                            'http://fitness-tracker.dev.svc.cluster.local:8080' :
+                            'http://fitness-tracker.test.svc.cluster.local:8080'
+
+                        // External NodePort URLs for reference (for external access)
+                        def externalUrl = env.BRANCH_NAME == 'develop' ?
                             'http://172.18.0.5:30830' :
                             'http://172.18.0.7:31397'
 
                         env.APP_URL = appUrl
+                        env.EXTERNAL_URL = externalUrl
 
                         echo "📍 ArgoCD App: ${argoApp}"
                         echo "📍 Namespace: ${appNamespace}"
-                        echo "📍 App URL (NodePort): ${appUrl}"
+                        echo "📍 Internal Service URL: ${appUrl}"
+                        echo "📍 External NodePort URL: ${externalUrl}"
 
                         sh """
                             export KUBECONFIG=/root/.kube/config
@@ -728,7 +738,8 @@ EOF
                                     # Add to build info
                                     echo "=== REST API Functional Testing ===" >> \${ARTIFACTS_DIR}/build-info.txt
                                     echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Target URL: \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
+                                    echo "Internal URL: \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
+                                    echo "External URL: \${EXTERNAL_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
                                     echo "Tests Passed: \${TESTS_PASSED}" >> \${ARTIFACTS_DIR}/build-info.txt
                                     echo "Tests Failed: \${TESTS_FAILED}" >> \${ARTIFACTS_DIR}/build-info.txt
 
@@ -976,7 +987,8 @@ AWKEOF
                                         # Add to build info
                                         echo "=== JMeter Performance Testing ===" >> \${ARTIFACTS_DIR}/build-info.txt
                                         echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
-                                        echo "Target URL: \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
+                                        echo "Internal URL: \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
+                                        echo "External URL: \${EXTERNAL_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
                                         echo "Load: 50 threads, 30s ramp-up, 120s duration" >> \${ARTIFACTS_DIR}/build-info.txt
                                         echo "Success Rate: \${SUCCESS_RATE}%" >> \${ARTIFACTS_DIR}/build-info.txt
                                         echo "Avg Response Time: \${AVG_TIME}ms" >> \${ARTIFACTS_DIR}/build-info.txt
@@ -1128,7 +1140,8 @@ ZAPEOF
                                             # Add to build info
                                             echo "=== OWASP ZAP Security Scan ===" >> \${ARTIFACTS_DIR}/build-info.txt
                                             echo "Scan Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
-                                            echo "Target: \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
+                                            echo "Internal URL: \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
+                                            echo "External URL: \${EXTERNAL_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
                                             echo "High Severity: \${HIGH}" >> \${ARTIFACTS_DIR}/build-info.txt
                                             echo "Medium Severity: \${MEDIUM}" >> \${ARTIFACTS_DIR}/build-info.txt
                                             echo "Low Severity: \${LOW}" >> \${ARTIFACTS_DIR}/build-info.txt
