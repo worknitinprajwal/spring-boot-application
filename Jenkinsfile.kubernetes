@@ -328,11 +328,12 @@ JSONEOF
             console.log('DEBUG: Raw JSON text length:', jsonText.length);
             console.log('DEBUG: First 200 chars of JSON:', jsonText.substring(0, 200));
 
-            if (jsonText && jsonText !== 'AIKIDO_JSON_PLACEHOLDER') {
+            // Check if JSON was injected (length > 50 means we have real data)
+            if (jsonText && jsonText.length > 50) {
                 scanData = JSON.parse(jsonText);
                 console.log('DEBUG: Successfully parsed JSON:', scanData);
             } else {
-                console.error('DEBUG: JSON placeholder not replaced or empty!');
+                console.error('DEBUG: JSON placeholder not replaced or empty! Length:', jsonText.length);
             }
         } catch (e) {
             console.error('DEBUG: JSON parse error:', e);
