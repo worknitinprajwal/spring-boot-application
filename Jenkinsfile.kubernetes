@@ -603,11 +603,11 @@ EOF
                                         if [ -f "${ARTIFACTS_DIR}/jmeter-reports/results.jtl" ]; then
                                             echo "Generating performance metrics summary..."
                                             awk -F',' 'NR>1 {
-                                                sum+=\$2;
+                                                sum+=\\$2;
                                                 count++;
-                                                if(\$2>max) max=\$2;
-                                                if(min=="" || \$2<min) min=\$2;
-                                                if(\$8=="true") success++;
+                                                if(\\$2>max) max=\\$2;
+                                                if(min=="" || \\$2<min) min=\\$2;
+                                                if(\\$8=="true") success++;
                                                 else failed++;
                                             } END {
                                                 print "=== Performance Metrics ==="
@@ -684,7 +684,7 @@ EOF
                                         # Count alerts by risk level if jq is available
                                         if command -v jq &> /dev/null; then
                                             echo "Alert Summary:" >> ${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
-                                            jq -r '.site[0].alerts[] | "- [\(.riskdesc)] \(.alert) (Count: \(.count))"' ${ARTIFACTS_DIR}/zap-reports/baseline-report.json >> ${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt 2>/dev/null || echo "No alerts detected" >> ${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                            jq -r '.site[0].alerts[] | "- [\\(.riskdesc)] \\(.alert) (Count: \\(.count))"' ${ARTIFACTS_DIR}/zap-reports/baseline-report.json >> ${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt 2>/dev/null || echo "No alerts detected" >> ${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
                                         fi
 
                                         cat ${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
@@ -732,13 +732,14 @@ EOF
                                     fi
 
                                     # Create metrics JSON for programmatic access
-                                    cat > ${ARTIFACTS_DIR}/metrics.json << 'MEOF'
+                                    TIMESTAMP=\$(date -u +%Y-%m-%dT%H:%M:%SZ)
+                                    cat > ${ARTIFACTS_DIR}/metrics.json << EOF
 {
   "build": {
     "number": "${BUILD_NUMBER}",
     "branch": "${BRANCH_NAME}",
     "image": "${IMAGE_NAME}:${IMAGE_TAG}",
-    "timestamp": "\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    "timestamp": "\${TIMESTAMP}"
   },
   "storage": {
     "location": "Jenkins Artifacts",
@@ -750,7 +751,7 @@ EOF
     }
   }
 }
-MEOF
+EOF
 
                                     echo ""
                                     echo "================================================"
