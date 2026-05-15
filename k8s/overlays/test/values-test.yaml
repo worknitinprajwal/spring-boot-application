@@ -1,7 +1,7 @@
 # Test Environment Values
 # Overrides for test cluster deployment
 
-replicaCount: 2
+replicaCount: 4
 
 image:
   pullPolicy: Always
