@@ -488,18 +488,20 @@ EOF
                         def ingressPort = env.BRANCH_NAME == 'develop' ? '8081' : '8082'
                         def ingressUrl = "http://${ingressHost}:${ingressPort}"
 
-                        // Use Ingress URL for all tests (NodePort unreliable with cross-node traffic in KIND)
+                        // Use NodePort for health checks (works cross-cluster via Docker network IPs)
+                        // Use Ingress URL for JMeter/ZAP tests (better load handling, avoids cross-node NodePort issues)
                         def nodePortUrl = env.BRANCH_NAME == 'develop' ?
                             'http://172.18.0.5:30830' :
                             'http://172.18.0.7:31397'
 
-                        env.APP_URL = ingressUrl  // Use Ingress for reliable testing
+                        env.HEALTH_CHECK_URL = nodePortUrl  // NodePort for quick health checks from Jenkins
+                        env.APP_URL = ingressUrl  // Ingress URL for JMeter/ZAP load tests
                         env.EXTERNAL_URL = ingressUrl  // Display ingress URL to users
 
                         echo "📍 ArgoCD App: ${argoApp}"
                         echo "📍 Namespace: ${appNamespace}"
-                        echo "📍 Ingress URL (test endpoint): ${ingressUrl}"
-                        echo "📍 NodePort URL (deprecated): ${nodePortUrl}"
+                        echo "📍 Health Check URL: ${nodePortUrl}"
+                        echo "📍 Load Test URL: ${ingressUrl}"
 
                         sh """
                             export KUBECONFIG=/root/.kube/config
@@ -523,7 +525,7 @@ EOF
                                 echo "  Running Image: \$RUNNING_IMAGE"
 
                                 if [ "\$RUNNING_IMAGE" = "\$EXPECTED_IMAGE" ]; then
-                                    if curl -s -f ${env.APP_URL}/actuator/health > /dev/null 2>&1; then
+                                    if curl -s -f ${env.HEALTH_CHECK_URL}/actuator/health > /dev/null 2>&1; then
                                         echo "✅ Correct image deployed and app is healthy!"
                                         exit 0
                                     else
