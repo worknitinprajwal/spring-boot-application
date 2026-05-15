@@ -190,27 +190,35 @@ spec:
                                     echo "Fetching detailed results for scan ID: \${SCAN_ID}"
                                     curl -s -H "X-AIK-API-SECRET: \${AIKIDO_CLIENT_API_KEY}" \
                                       "https://app.aikido.dev/api/integrations/continuous_integration/scan/repository?scan_id=\${SCAN_ID}" \
-                                      > ${ARTIFACTS_DIR}/aikido-scan-details.json || echo "❌ Failed to fetch details from API"
+                                      > ${ARTIFACTS_DIR}/aikido-scan-details.json
 
-                                    # Verify we got valid JSON
-                                    if [ -f ${ARTIFACTS_DIR}/aikido-scan-details.json ]; then
-                                        echo "DEBUG: aikido-scan-details.json exists"
-                                        echo "DEBUG: File size: \$(wc -c < ${ARTIFACTS_DIR}/aikido-scan-details.json) bytes"
-                                        echo "DEBUG: First 200 chars:"
-                                        head -c 200 ${ARTIFACTS_DIR}/aikido-scan-details.json
-                                        echo ""
-                                    else
-                                        echo "❌ aikido-scan-details.json was not created!"
-                                    fi
+                                    echo "DEBUG: File size: \$(wc -c < ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo 0) bytes"
 
-                                    # Pretty print JSON if jq available
+                                    # Check if API returned valid JSON
                                     if command -v jq >/dev/null 2>&1; then
                                         if jq empty ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null; then
-                                            echo "✅ JSON is valid"
-                                            cat ${ARTIFACTS_DIR}/aikido-scan-details.json | jq '.' > ${ARTIFACTS_DIR}/aikido-scan-details-formatted.json
+                                            echo "✅ Got valid JSON from API"
+                                            cat ${ARTIFACTS_DIR}/aikido-scan-details.json | jq '.'
                                         else
-                                            echo "❌ JSON is invalid or malformed!"
-                                            cat ${ARTIFACTS_DIR}/aikido-scan-details.json
+                                            echo "❌ API returned invalid JSON, creating from scan output"
+                                            # Parse scan output as fallback
+                                            SCAN_MESSAGE=\$(grep -i "Aikido Security found" ${ARTIFACTS_DIR}/aikido-scan-output.txt | head -n 1 || echo "")
+                                            CRITICAL_COUNT=\$(echo "\$SCAN_MESSAGE" | grep -oE '[0-9]+ +new +CRITICAL' | grep -oE '^[0-9]+' || echo "0")
+                                            HIGH_COUNT=\$(echo "\$SCAN_MESSAGE" | grep -oE '[0-9]+ +new +HIGH' | grep -oE '^[0-9]+' || echo "0")
+                                            GATE_PASSED="true"
+                                            if [ "\$CRITICAL_COUNT" != "0" ] || [ "\$HIGH_COUNT" != "0" ]; then
+                                                GATE_PASSED="false"
+                                            fi
+                                            cat > ${ARTIFACTS_DIR}/aikido-scan-details.json <<JSONEOF
+{
+  "gate_passed": \${GATE_PASSED},
+  "new_issues_found": \$(( CRITICAL_COUNT + HIGH_COUNT )),
+  "outcome": {
+    "short_human_readable_message": "\${SCAN_MESSAGE}"
+  }
+}
+JSONEOF
+                                            echo "Created fallback JSON from scan output"
                                         fi
                                     fi
                                 fi
