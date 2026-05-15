@@ -595,12 +595,12 @@ EOF
                                             -JTHREADS=50 \\
                                             -JRAMP_UP=30 \\
                                             -JDURATION=120 \\
-                                            -l ${ARTIFACTS_DIR}/jmeter-reports/results.jtl \\
-                                            -j ${ARTIFACTS_DIR}/jmeter-reports/jmeter.log \\
-                                            -e -o ${ARTIFACTS_DIR}/jmeter-reports/html || echo "⚠️ JMeter tests completed with failures (non-blocking)"
+                                            -l \${ARTIFACTS_DIR}/jmeter-reports/results.jtl \\
+                                            -j \${ARTIFACTS_DIR}/jmeter-reports/jmeter.log \\
+                                            -e -o \${ARTIFACTS_DIR}/jmeter-reports/html || echo "⚠️ JMeter tests completed with failures (non-blocking)"
 
                                         # Generate CSV summary for metrics analysis
-                                        if [ -f "${ARTIFACTS_DIR}/jmeter-reports/results.jtl" ]; then
+                                        if [ -f "\${ARTIFACTS_DIR}/jmeter-reports/results.jtl" ]; then
                                             echo "Generating performance metrics summary..."
                                             awk -F',' 'NR>1 {
                                                 sum+=\\$2;
@@ -618,20 +618,20 @@ EOF
                                                 print "Avg Response Time: " (sum/count) " ms"
                                                 print "Min Response Time: " min " ms"
                                                 print "Max Response Time: " max " ms"
-                                            }' ${ARTIFACTS_DIR}/jmeter-reports/results.jtl > ${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
+                                            }' \${ARTIFACTS_DIR}/jmeter-reports/results.jtl > \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
 
-                                            cat ${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
+                                            cat \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
                                         fi
                                     else
                                         echo "⚠️ No JMeter test plan found at tests/jmeter/fitness-tracker-load-test.jmx"
-                                        mkdir -p ${ARTIFACTS_DIR}/jmeter-reports
-                                        echo "JMeter test plan not found" > ${ARTIFACTS_DIR}/jmeter-reports/summary.txt
+                                        mkdir -p \${ARTIFACTS_DIR}/jmeter-reports
+                                        echo "JMeter test plan not found" > \${ARTIFACTS_DIR}/jmeter-reports/summary.txt
                                     fi
 
-                                    echo "=== JMeter Performance Testing ===" >> ${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Target URL: ${env.APP_URL}" >> ${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Load Configuration: 50 threads, 30s ramp-up, 120s duration" >> ${ARTIFACTS_DIR}/build-info.txt
+                                    echo "=== JMeter Performance Testing ===" >> \${ARTIFACTS_DIR}/build-info.txt
+                                    echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
+                                    echo "Target URL: ${env.APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
+                                    echo "Load Configuration: 50 threads, 30s ramp-up, 120s duration" >> \${ARTIFACTS_DIR}/build-info.txt
                                 """
                             }
                         }
@@ -671,23 +671,23 @@ EOF
                                         -J /zap/wrk/reports/baseline-report.json || echo "⚠️ ZAP scan found security issues (non-blocking)"
 
                                     # Copy reports to artifacts directory (from ZAP user perspective)
-                                    mkdir -p ${ARTIFACTS_DIR}/zap-reports
-                                    cp -r /zap/wrk/reports/* ${ARTIFACTS_DIR}/zap-reports/ || true
+                                    mkdir -p \${ARTIFACTS_DIR}/zap-reports
+                                    cp -r /zap/wrk/reports/* \${ARTIFACTS_DIR}/zap-reports/ || true
 
                                     # Parse JSON report for security metrics
-                                    if [ -f "${ARTIFACTS_DIR}/zap-reports/baseline-report.json" ]; then
-                                        echo "=== Security Scan Results ===" > ${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
-                                        echo "Scan completed at: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
-                                        echo "Target: ${env.APP_URL}" >> ${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
-                                        echo "" >> ${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                    if [ -f "\${ARTIFACTS_DIR}/zap-reports/baseline-report.json" ]; then
+                                        echo "=== Security Scan Results ===" > \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                        echo "Scan completed at: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                        echo "Target: ${env.APP_URL}" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                        echo "" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
 
                                         # Count alerts by risk level if jq is available
                                         if command -v jq &> /dev/null; then
-                                            echo "Alert Summary:" >> ${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
-                                            jq -r '.site[0].alerts[] | "- [\\(.riskdesc)] \\(.alert) (Count: \\(.count))"' ${ARTIFACTS_DIR}/zap-reports/baseline-report.json >> ${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt 2>/dev/null || echo "No alerts detected" >> ${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                            echo "Alert Summary:" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                            jq -r '.site[0].alerts[] | "- [\\(.riskdesc)] \\(.alert) (Count: \\(.count))"' \${ARTIFACTS_DIR}/zap-reports/baseline-report.json >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt 2>/dev/null || echo "No alerts detected" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
                                         fi
 
-                                        cat ${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                        cat \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
                                     fi
                                 """
                             }
@@ -715,25 +715,25 @@ EOF
                             script {
                                 sh """
                                     # Write consolidated test info to build-info.txt
-                                    echo "" >> ${ARTIFACTS_DIR}/build-info.txt
-                                    echo "=== Test Execution Summary ===" >> ${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Timestamp: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${ARTIFACTS_DIR}/build-info.txt
+                                    echo "" >> \${ARTIFACTS_DIR}/build-info.txt
+                                    echo "=== Test Execution Summary ===" >> \${ARTIFACTS_DIR}/build-info.txt
+                                    echo "Timestamp: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
 
                                     # Add JMeter metrics
-                                    if [ -f "${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt" ]; then
-                                        echo "" >> ${ARTIFACTS_DIR}/build-info.txt
-                                        cat ${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt >> ${ARTIFACTS_DIR}/build-info.txt
+                                    if [ -f "\${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt" ]; then
+                                        echo "" >> \${ARTIFACTS_DIR}/build-info.txt
+                                        cat \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt >> \${ARTIFACTS_DIR}/build-info.txt
                                     fi
 
                                     # Add ZAP metrics
-                                    if [ -f "${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt" ]; then
-                                        echo "" >> ${ARTIFACTS_DIR}/build-info.txt
-                                        cat ${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt >> ${ARTIFACTS_DIR}/build-info.txt
+                                    if [ -f "\${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt" ]; then
+                                        echo "" >> \${ARTIFACTS_DIR}/build-info.txt
+                                        cat \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt >> \${ARTIFACTS_DIR}/build-info.txt
                                     fi
 
                                     # Create metrics JSON for programmatic access
                                     TIMESTAMP=\$(date -u +%Y-%m-%dT%H:%M:%SZ)
-                                    cat > ${ARTIFACTS_DIR}/metrics.json << EOF
+                                    cat > \${ARTIFACTS_DIR}/metrics.json << EOF
 {
   "build": {
     "number": "${BUILD_NUMBER}",
@@ -743,7 +743,7 @@ EOF
   },
   "storage": {
     "location": "Jenkins Artifacts",
-    "artifacts_dir": "${ARTIFACTS_DIR}",
+    "artifacts_dir": "\${ARTIFACTS_DIR}",
     "reports": {
       "jmeter": "build-artifacts/jmeter-reports/html/index.html",
       "zap": "build-artifacts/zap-reports/baseline-report.html",
@@ -764,7 +764,7 @@ EOF
                                     echo "  - OWASP ZAP Security: ${BUILD_URL}OWASP_20ZAP_20Security_20Report/"
                                     echo "  - Full Artifacts: ${BUILD_URL}artifact/"
                                     echo ""
-                                    echo "Metrics Summary: ${ARTIFACTS_DIR}/build-info.txt"
+                                    echo "Metrics Summary: \${ARTIFACTS_DIR}/build-info.txt"
                                     echo "================================================"
                                 """
                             }
