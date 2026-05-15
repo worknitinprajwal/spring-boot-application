@@ -665,26 +665,48 @@ EOF
                         echo "📍 Namespace: ${appNamespace}"
                         echo "📍 App URL (NodePort): ${appUrl}"
 
-                        echo "⏳ Waiting for deployment to be ready..."
+                        echo "⏳ Waiting for deployment with correct image..."
                         sh """
-                            # Wait up to 5 minutes for app to be ready
+                            # Determine target cluster context and namespace
+                            TARGET_CONTEXT="${env.BRANCH_NAME == 'develop' ? 'kind-kind-dev' : 'kind-kind-test'}"
+                            TARGET_NAMESPACE="${appNamespace}"
+                            EXPECTED_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
+
+                            echo "Expected Image: \$EXPECTED_IMAGE"
+                            echo "Target: \$TARGET_CONTEXT / \$TARGET_NAMESPACE"
+
+                            # Wait up to 5 minutes for correct image to be deployed
                             MAX_ATTEMPTS=30
                             ATTEMPT=0
 
                             while [ \$ATTEMPT -lt \$MAX_ATTEMPTS ]; do
                                 ATTEMPT=\$((ATTEMPT + 1))
-                                echo "Attempt \$ATTEMPT/\$MAX_ATTEMPTS: Checking ${appUrl}/actuator/health"
+                                echo "[\$ATTEMPT/\$MAX_ATTEMPTS] Checking deployment..."
 
-                                if curl -s -f ${appUrl}/actuator/health > /dev/null 2>&1; then
-                                    echo "✅ Application is ready!"
-                                    exit 0
+                                # Get actual running image from pods
+                                RUNNING_IMAGE=\$(kubectl --context=\$TARGET_CONTEXT -n \$TARGET_NAMESPACE get pods -l app=fitness-tracker -o jsonpath='{.items[0].spec.containers[0].image}' 2>/dev/null || echo "")
+
+                                echo "  Running Image: \$RUNNING_IMAGE"
+
+                                # Check if image matches
+                                if [ "\$RUNNING_IMAGE" = "\$EXPECTED_IMAGE" ]; then
+                                    # Verify app is also healthy
+                                    if curl -s -f ${appUrl}/actuator/health > /dev/null 2>&1; then
+                                        echo "✅ Correct image deployed and app is healthy!"
+                                        exit 0
+                                    else
+                                        echo "  Image correct but app not healthy yet..."
+                                    fi
+                                else
+                                    echo "  Image mismatch, waiting for ArgoCD to sync..."
                                 fi
 
-                                echo "Not ready yet, waiting 10 seconds..."
                                 sleep 10
                             done
 
-                            echo "❌ Application did not become ready in time"
+                            echo "❌ Deployment verification failed after 5 minutes"
+                            echo "Expected: \$EXPECTED_IMAGE"
+                            echo "Got: \$RUNNING_IMAGE"
                             exit 1
                         """
                     }
