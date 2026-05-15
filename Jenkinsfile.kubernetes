@@ -757,15 +757,13 @@ EOF
                                 echo "📥 Downloading JMeter 5.6.3 (29 MB)..."
                                 cd /tmp
                                 timeout 180 wget --progress=dot:giga https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.6.3.tgz || {
-                                    echo "⚠️ Download from Apache archive failed, trying mirror..."
+                                    echo "⚠️ Apache archive slow, trying mirror..."
                                     wget --progress=dot:giga https://dlcdn.apache.org/jmeter/binaries/apache-jmeter-5.6.3.tgz
                                 }
-                                echo "📦 Extracting JMeter..."
-                                tar -xzf apache-jmeter-5.6.3.tgz
-                                rm apache-jmeter-5.6.3.tgz
-                                echo "✅ JMeter installed"
+                                echo "📦 Extracting..."
+                                tar -xzf apache-jmeter-5.6.3.tgz && rm apache-jmeter-5.6.3.tgz
                             else
-                                echo "✅ JMeter already installed, skipping download"
+                                echo "✅ JMeter already installed"
                             fi
 
                             # Create reports directory
@@ -832,18 +830,10 @@ JEOF
                         sh """
                             # Install ZAP
                             if [ ! -d /tmp/ZAP_2.14.0 ]; then
-                                echo "📥 Downloading OWASP ZAP 2.14.0 (460 MB - may take 5-10 minutes)..."
+                                echo "Installing OWASP ZAP..."
                                 cd /tmp
-                                timeout 600 wget --progress=dot:mega https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2.14.0_Linux.tar.gz || {
-                                    echo "❌ ZAP download failed or timed out, skipping ZAP scan"
-                                    exit 0
-                                }
-                                echo "📦 Extracting ZAP..."
+                                wget -q https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2.14.0_Linux.tar.gz
                                 tar -xzf ZAP_2.14.0_Linux.tar.gz
-                                rm ZAP_2.14.0_Linux.tar.gz
-                                echo "✅ ZAP installed"
-                            else
-                                echo "✅ ZAP already installed, skipping download"
                             fi
 
                             # Create reports directory
