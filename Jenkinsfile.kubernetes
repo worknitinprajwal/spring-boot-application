@@ -551,23 +551,24 @@ EOF
                         container('maven') {
                             echo "🧪 Running SoapUI API tests via Maven..."
                             script {
+                                def appUrl = env.APP_URL
                                 sh """
                                     # Use SoapUI Maven plugin - most reliable in CI
                                     if [ -f "pom.xml" ]; then
-                                        echo "Running SoapUI tests against ${env.APP_URL}..."
+                                        echo "Running SoapUI tests against ${appUrl}..."
                                         mvn com.smartbear.soapui:soapui-maven-plugin:test \
                                             -DprojectFile=tests/soapui/fitness-tracker-api-tests.xml \
-                                            -Dendpoint=${env.APP_URL} \
-                                            -DoutputFolder=${ARTIFACTS_DIR}/soapui-reports \
+                                            -Dendpoint=${appUrl} \
+                                            -DoutputFolder=\${ARTIFACTS_DIR}/soapui-reports \
                                             -Dmaven.repo.local=/root/.m2/repository || echo "⚠️ SoapUI tests failed (non-blocking)"
                                     else
                                         echo "⚠️ No SoapUI project found, creating placeholder..."
-                                        echo "SoapUI test project not configured yet" > ${ARTIFACTS_DIR}/soapui-reports/summary.txt
+                                        echo "SoapUI test project not configured yet" > \${ARTIFACTS_DIR}/soapui-reports/summary.txt
                                     fi
 
-                                    echo "=== SoapUI API Testing ===" >> ${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Target URL: ${env.APP_URL}" >> ${ARTIFACTS_DIR}/build-info.txt
+                                    echo "=== SoapUI API Testing ===" >> \${ARTIFACTS_DIR}/build-info.txt
+                                    echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
+                                    echo "Target URL: ${appUrl}" >> \${ARTIFACTS_DIR}/build-info.txt
                                 """
                             }
                         }
@@ -584,14 +585,15 @@ EOF
                         container('jmeter') {  // Using JMeter container!
                             echo "⚡ Running JMeter performance tests..."
                             script {
+                                def appUrl = env.APP_URL
                                 sh """
                                     if [ -f "tests/jmeter/fitness-tracker-load-test.jmx" ]; then
-                                        echo "Running JMeter performance tests against ${env.APP_URL}..."
+                                        echo "Running JMeter performance tests against ${appUrl}..."
 
                                         # Run JMeter with production-level configuration
                                         jmeter -n \\
                                             -t tests/jmeter/fitness-tracker-load-test.jmx \\
-                                            -JAPP_URL=${env.APP_URL} \\
+                                            -JAPP_URL=${appUrl} \\
                                             -JTHREADS=50 \\
                                             -JRAMP_UP=30 \\
                                             -JDURATION=120 \\
@@ -630,7 +632,7 @@ EOF
 
                                     echo "=== JMeter Performance Testing ===" >> \${ARTIFACTS_DIR}/build-info.txt
                                     echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Target URL: ${env.APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
+                                    echo "Target URL: ${appUrl}" >> \${ARTIFACTS_DIR}/build-info.txt
                                     echo "Load Configuration: 50 threads, 30s ramp-up, 120s duration" >> \${ARTIFACTS_DIR}/build-info.txt
                                 """
                             }
@@ -656,15 +658,16 @@ EOF
                         container('zap') {  // Using ZAP container!
                             echo "🔐 Running OWASP ZAP security scan..."
                             script {
+                                def appUrl = env.APP_URL
                                 sh """
-                                    echo "🔐 Running ZAP baseline scan against ${env.APP_URL}..."
+                                    echo "🔐 Running ZAP baseline scan against ${appUrl}..."
 
                                     # Create reports directory in ZAP working directory
                                     mkdir -p /zap/wrk/reports
 
                                     # Run ZAP baseline scan (built into the container)
                                     zap-baseline.py \\
-                                        -t ${env.APP_URL} \\
+                                        -t ${appUrl} \\
                                         -r /zap/wrk/reports/baseline-report.html \\
                                         -w /zap/wrk/reports/baseline-report.md \\
                                         -x /zap/wrk/reports/baseline-report.xml \\
@@ -678,7 +681,7 @@ EOF
                                     if [ -f "\${ARTIFACTS_DIR}/zap-reports/baseline-report.json" ]; then
                                         echo "=== Security Scan Results ===" > \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
                                         echo "Scan completed at: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
-                                        echo "Target: ${env.APP_URL}" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                        echo "Target: ${appUrl}" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
                                         echo "" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
 
                                         # Count alerts by risk level if jq is available
