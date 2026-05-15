@@ -838,6 +838,10 @@ HTMLEOF
                                     if [ -f "\${ARTIFACTS_DIR}/jmeter-reports/results.jtl" ]; then
                                         echo "📊 Analyzing performance metrics..."
 
+                                        # Debug: Show first few lines of CSV
+                                        echo "DEBUG: First 5 lines of JMeter results:"
+                                        head -5 "\${ARTIFACTS_DIR}/jmeter-reports/results.jtl" || true
+
                                         # Enhanced awk script for detailed metrics
                                         cat > /tmp/jmeter-analyze.awk << 'AWKEOF'
 BEGIN {
