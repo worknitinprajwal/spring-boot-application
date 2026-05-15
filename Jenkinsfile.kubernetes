@@ -377,6 +377,16 @@ EOF
                                 git config user.email "ci@cloudbees.com"
                                 git config user.name "CloudBees CI"
 
+                                # Pull latest to avoid overwriting manual changes (e.g., replicaCount)
+                                git pull --rebase https://\${GIT_USER}:\${GIT_PASS}@github.com/anuddeeph2/sample-spring-boot-app.git ${env.BRANCH_NAME} || echo "Pull failed, continuing with local changes"
+
+                                # Re-apply image tag update after pull (in case values.yaml changed)
+                                cd k8s/helm-chart
+                                sed -i.bak 's|tag: .*|tag: ${IMAGE_TAG}|' values.yaml
+                                sed -i.bak 's|repository: .*|repository: ${IMAGE_NAME}|' values.yaml
+                                rm -f values.yaml.bak
+                                cd ../..
+
                                 git add k8s/helm-chart/values.yaml
                                 git commit -m "Update image tag to ${IMAGE_TAG} [skip ci]" || echo "No changes to commit"
 
