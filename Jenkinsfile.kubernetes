@@ -157,9 +157,12 @@ spec:
                         env.GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
                         env.GIT_COMMIT_MSG = sh(script: "git log -1 --pretty=%B", returnStdout: true).trim()
 
+                        // Write commit info, escaping special characters in commit message
                         sh """
                             echo "Commit: ${env.GIT_COMMIT_SHORT}" >> ${ARTIFACTS_DIR}/build-info.txt
-                            echo "Message: ${env.GIT_COMMIT_MSG}" >> ${ARTIFACTS_DIR}/build-info.txt
+                            cat >> ${ARTIFACTS_DIR}/build-info.txt << 'COMMIT_MSG_EOF'
+Message: ${env.GIT_COMMIT_MSG}
+COMMIT_MSG_EOF
                         """
                     }
                 }
