@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fitness Tracker - Home</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 900px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        h1 {
+            color: #667eea;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 1.2em;
+        }
+
+        .api-section {
+            margin: 30px 0;
+        }
+
+        .api-section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+
+        .endpoint {
+            background: #f7f9fc;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+
+        .endpoint .method {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-weight: bold;
+            font-size: 0.85em;
+            margin-right: 10px;
+        }
+
+        .method.get { background: #61affe; color: white; }
+        .method.post { background: #49cc90; color: white; }
+        .method.put { background: #fca130; color: white; }
+        .method.delete { background: #f93e3e; color: white; }
+
+        .endpoint code {
+            background: #e8eaf0;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .endpoint .description {
+            margin-top: 8px;
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .test-section {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f0f4f8;
+            border-radius: 10px;
+        }
+
+        .test-section h3 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        #testResult {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 5px;
+            display: none;
+        }
+
+        #testResult.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        #testResult.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #5568d3;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 30px;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .stat-card h3 {
+            font-size: 2em;
+            margin-bottom: 5px;
+        }
+
+        .stat-card p {
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>Fitness Tracker</h1>
+            <p class="subtitle">Track your workouts, monitor your progress</p>
+        </div>
+
+        <div class="api-section">
+            <h2>Available API Endpoints</h2>
+
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <code>/api/workouts</code>
+                <div class="description">Get all workouts</div>
+            </div>
+
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <code>/api/workouts/{id}</code>
+                <div class="description">Get a specific workout by ID</div>
+            </div>
+
+            <div class="endpoint">
+                <span class="method post">POST</span>
+                <code>/api/workouts</code>
+                <div class="description">Create a new workout</div>
+            </div>
+
+            <div class="endpoint">
+                <span class="method put">PUT</span>
+                <code>/api/workouts/{id}</code>
+                <div class="description">Update an existing workout</div>
+            </div>
+
+            <div class="endpoint">
+                <span class="method delete">DELETE</span>
+                <code>/api/workouts/{id}</code>
+                <div class="description">Delete a workout</div>
+            </div>
+
+            <div class="endpoint">
+                <span class="method get">GET</span>
+                <code>/actuator/health</code>
+                <div class="description">Application health check</div>
+            </div>
+        </div>
+
+        <div class="test-section">
+            <h3>Test the API</h3>
+            <button id="testBtn" onclick="testAPI()">Fetch All Workouts</button>
+            <div id="testResult"></div>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <h3 id="workoutCount">-</h3>
+                <p>Total Workouts</p>
+            </div>
+            <div class="stat-card">
+                <h3>Active</h3>
+                <p>API Status</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function testAPI() {
+            const resultDiv = document.getElementById('testResult');
+            const testBtn = document.getElementById('testBtn');
+            const countElem = document.getElementById('workoutCount');
+
+            testBtn.disabled = true;
+            resultDiv.style.display = 'none';
+
+            try {
+                const response = await fetch('/api/workouts');
+                const data = await response.json();
+
+                resultDiv.className = 'success';
+                resultDiv.style.display = 'block';
+                resultDiv.innerHTML = `<strong>Success!</strong> Found ${data.length} workout(s).<br><pre>${JSON.stringify(data, null, 2)}</pre>`;
+                countElem.textContent = data.length;
+            } catch (error) {
+                resultDiv.className = 'error';
+                resultDiv.style.display = 'block';
+                resultDiv.innerHTML = `<strong>Error:</strong> ${error.message}`;
+            } finally {
+                testBtn.disabled = false;
+            }
+        }
+
+        // Load workout count on page load
+        window.addEventListener('load', async () => {
+            try {
+                const response = await fetch('/api/workouts');
+                const data = await response.json();
+                document.getElementById('workoutCount').textContent = data.length;
+            } catch (error) {
+                document.getElementById('workoutCount').textContent = '?';
+            }
+        });
+    </script>
+</body>
+</html>
