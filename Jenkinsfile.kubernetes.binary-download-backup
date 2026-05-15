@@ -1,7 +1,6 @@
 // CloudBees CI Pipeline - Build, Test, Deploy with Artifacts & Unify Integration
-// UPDATED VERSION: Uses Docker containers for testing tools instead of binary downloads
 // Stores artifacts in workspace and publishes to CloudBees Unify
-// Uses Kubernetes pod template with pre-installed testing tools
+// Uses Kubernetes pod template
 
 pipeline {
     agent {
@@ -45,36 +44,6 @@ spec:
     volumeMounts:
     - name: docker-config
       mountPath: /kaniko/.docker
-  # JMeter Container - Pre-installed with all dependencies
-  - name: jmeter
-    image: justb4/jmeter:5.5
-    command:
-    - sleep
-    args:
-    - 99d
-    tty: true
-    resources:
-      requests:
-        memory: "512Mi"
-        cpu: "250m"
-      limits:
-        memory: "1Gi"
-        cpu: "500m"
-  # OWASP ZAP Container - Pre-installed security scanner
-  - name: zap
-    image: zaproxy/zap-stable:latest
-    command:
-    - sleep
-    args:
-    - 99d
-    tty: true
-    resources:
-      requests:
-        memory: "512Mi"
-        cpu: "250m"
-      limits:
-        memory: "1Gi"
-        cpu: "500m"
   volumes:
   - name: maven-cache
     emptyDir: {}
@@ -234,6 +203,241 @@ spec:
                                     curl -s -H "X-AIK-API-SECRET: \${AIKIDO_CLIENT_API_KEY}" \
                                       "https://app.aikido.dev/api/integrations/continuous_integration/scan/repository?scan_id=\${SCAN_ID}" \
                                       > ${ARTIFACTS_DIR}/aikido-scan-details.json
+
+                                    echo "DEBUG: File size: \$(wc -c < ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo 0) bytes"
+
+                                    # Check if API returned valid JSON
+                                    if command -v jq >/dev/null 2>&1; then
+                                        if jq empty ${ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null; then
+                                            echo "✅ Got valid JSON from API"
+                                            cat ${ARTIFACTS_DIR}/aikido-scan-details.json | jq '.'
+                                        else
+                                            echo "❌ API returned invalid JSON, creating from scan output"
+                                            # Parse scan output as fallback
+                                            SCAN_MESSAGE=\$(grep -i "Aikido Security found" ${ARTIFACTS_DIR}/aikido-scan-output.txt | head -n 1 || echo "")
+                                            CRITICAL_COUNT=\$(echo "\$SCAN_MESSAGE" | grep -oE '[0-9]+ +new +CRITICAL' | grep -oE '^[0-9]+' || echo "0")
+                                            HIGH_COUNT=\$(echo "\$SCAN_MESSAGE" | grep -oE '[0-9]+ +new +HIGH' | grep -oE '^[0-9]+' || echo "0")
+                                            GATE_PASSED="true"
+                                            if [ "\$CRITICAL_COUNT" != "0" ] || [ "\$HIGH_COUNT" != "0" ]; then
+                                                GATE_PASSED="false"
+                                            fi
+                                            cat > ${ARTIFACTS_DIR}/aikido-scan-details.json <<JSONEOF
+{
+  "gate_passed": \${GATE_PASSED},
+  "new_issues_found": \$(( CRITICAL_COUNT + HIGH_COUNT )),
+  "outcome": {
+    "short_human_readable_message": "\${SCAN_MESSAGE}"
+  }
+}
+JSONEOF
+                                            echo "Created fallback JSON from scan output"
+                                        fi
+                                    fi
+                                fi
+
+                                # Skip HTML report generation - just keep text output
+                                if false; then
+                                    echo "HTML report generation disabled"
+                                    cat > /dev/null <<'HTMLEOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Aikido Security Scan Report</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h1 { color: #333; border-bottom: 3px solid #e74c3c; padding-bottom: 10px; }
+        h2 { color: #555; margin-top: 30px; border-bottom: 2px solid #3498db; padding-bottom: 8px; }
+        .summary { display: flex; gap: 20px; margin: 20px 0; flex-wrap: wrap; }
+        .summary-card { flex: 1; min-width: 200px; padding: 20px; border-radius: 6px; color: white; }
+        .critical { background: #c0392b; }
+        .high { background: #e67e22; }
+        .medium { background: #f39c12; }
+        .low { background: #27ae60; }
+        .info { background: #3498db; }
+        .summary-card h3 { margin: 0 0 10px 0; font-size: 14px; opacity: 0.9; }
+        .summary-card .count { font-size: 36px; font-weight: bold; margin: 0; }
+        .issue-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        .issue-table th { background: #34495e; color: white; padding: 12px; text-align: left; font-weight: 600; }
+        .issue-table td { padding: 12px; border-bottom: 1px solid #ddd; }
+        .issue-table tr:hover { background: #f8f9fa; }
+        .severity-badge { padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: bold; color: white; display: inline-block; }
+        .severity-critical { background: #c0392b; }
+        .severity-high { background: #e67e22; }
+        .severity-medium { background: #f39c12; }
+        .severity-low { background: #27ae60; }
+        .issue-id { font-family: monospace; color: #2c3e50; font-weight: 600; }
+        .metadata { background: #ecf0f1; padding: 15px; border-radius: 6px; margin: 20px 0; }
+        .metadata p { margin: 5px 0; color: #555; }
+        .gate-status { padding: 20px; border-radius: 6px; margin: 20px 0; font-weight: bold; }
+        .gate-failed { background: #fadbd8; color: #c0392b; border-left: 4px solid #c0392b; }
+        .gate-passed { background: #d5f4e6; color: #27ae60; border-left: 4px solid #27ae60; }
+        .link { color: #3498db; text-decoration: none; }
+        .link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔒 Aikido Security Scan Report</h1>
+
+        <div class="metadata">
+            <p><strong>Repository:</strong> REPO_NAME_PLACEHOLDER</p>
+            <p><strong>Commit:</strong> COMMIT_PLACEHOLDER</p>
+            <p><strong>Branch:</strong> BRANCH_PLACEHOLDER</p>
+            <p><strong>Build:</strong> BUILD_NUMBER_PLACEHOLDER</p>
+            <p><strong>Scan Date:</strong> SCAN_DATE_PLACEHOLDER</p>
+            <p><strong>Scan ID:</strong> SCAN_ID_PLACEHOLDER</p>
+            <p><strong>View in Aikido:</strong> <a href="DIFF_URL_PLACEHOLDER" class="link" target="_blank">Open Aikido Dashboard</a></p>
+        </div>
+
+        <div class="gate-status GATE_STATUS_CLASS">
+            GATE_STATUS_MESSAGE
+        </div>
+
+        <h2>Security Issues Summary</h2>
+        <div class="summary">
+            <div class="summary-card critical">
+                <h3>CRITICAL</h3>
+                <p class="count">CRITICAL_COUNT</p>
+            </div>
+            <div class="summary-card high">
+                <h3>HIGH</h3>
+                <p class="count">HIGH_COUNT</p>
+            </div>
+            <div class="summary-card medium">
+                <h3>MEDIUM</h3>
+                <p class="count">MEDIUM_COUNT</p>
+            </div>
+            <div class="summary-card low">
+                <h3>LOW</h3>
+                <p class="count">LOW_COUNT</p>
+            </div>
+        </div>
+
+        <h2>Issues Introduced (48 total)</h2>
+        <table class="issue-table">
+            <thead>
+                <tr>
+                    <th>Severity</th>
+                    <th>Type</th>
+                    <th>Issue ID</th>
+                    <th>Component</th>
+                </tr>
+            </thead>
+            <tbody id="issues-body">
+                <!-- Issues will be inserted here -->
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // Aikido scan data will be injected here
+        window.aikidoScanData = AIKIDO_JSON_PLACEHOLDER;
+
+        const scanData = window.aikidoScanData || {};
+        console.log('DEBUG: Loaded scanData:', scanData);
+
+        // Extract severity counts from the message
+        if (scanData && scanData.outcome && scanData.outcome.short_human_readable_message) {
+            const msg = scanData.outcome.short_human_readable_message;
+            console.log('DEBUG: Processing message:', msg);
+
+            // Extract counts using regex (use [0-9] and spaces to avoid backslash issues)
+            const criticalMatch = msg.match(/([0-9]+) +new +CRITICAL/i);
+            const highMatch = msg.match(/([0-9]+) +new +HIGH/i);
+            const mediumMatch = msg.match(/([0-9]+) +new +MEDIUM/i);
+            const lowMatch = msg.match(/([0-9]+) +new +LOW/i);
+
+            console.log('DEBUG: Regex matches:', { criticalMatch, highMatch, mediumMatch, lowMatch });
+
+            // Update the count elements
+            const counts = document.querySelectorAll('.count');
+            console.log('DEBUG: Found', counts.length, 'count elements');
+            if (criticalMatch && counts[0]) counts[0].textContent = criticalMatch[1];
+            if (highMatch && counts[1]) counts[1].textContent = highMatch[1];
+            if (mediumMatch && counts[2]) counts[2].textContent = mediumMatch[1];
+            if (lowMatch && counts[3]) counts[3].textContent = lowMatch[1];
+
+            // Update gate status
+            const gateDiv = document.querySelector('.gate-status');
+            if (scanData.gate_passed === false) {
+                gateDiv.className = 'gate-status gate-failed';
+                gateDiv.textContent = msg;
+            }
+        } else {
+            console.error('DEBUG: Missing outcome data in scanData:', scanData);
+        }
+
+        // Populate issues table
+        const issuesBody = document.getElementById('issues-body');
+        if (scanData && scanData.issues) {
+            console.log('DEBUG: Processing', scanData.issues.length, 'issues');
+            scanData.issues.forEach(issue => {
+                const row = document.createElement('tr');
+                const severity = issue.severity || 'unknown';
+                row.innerHTML = '<td><span class="severity-badge severity-' + severity.toLowerCase() + '">' + severity.toUpperCase() + '</span></td>' +
+                    '<td>' + (issue.type || 'Security Issue') + '</td>' +
+                    '<td class="issue-id">' + (issue.id || issue.cve || 'N/A') + '</td>' +
+                    '<td>' + (issue.component || issue.package || 'N/A') + '</td>';
+                issuesBody.appendChild(row);
+            });
+        } else {
+            console.log('DEBUG: No issues array found in scanData');
+        }
+    </script>
+</body>
+</html>
+HTMLEOF
+
+                                    # Generate HTML report - let JavaScript parse JSON and populate counts
+                                    if [ -f ${ARTIFACTS_DIR}/aikido-scan-details.json ]; then
+                                        echo "📊 Generating HTML report with Aikido scan data..."
+
+                                        # Replace basic metadata placeholders
+                                        sed -e "s|REPO_NAME_PLACEHOLDER|\${REPO_NAME}|g" \
+                                            -e "s|COMMIT_PLACEHOLDER|${GIT_COMMIT}|g" \
+                                            -e "s|BRANCH_PLACEHOLDER|${BRANCH_NAME}|g" \
+                                            -e "s|BUILD_NUMBER_PLACEHOLDER|${BUILD_NUMBER}|g" \
+                                            -e "s|SCAN_DATE_PLACEHOLDER|\$(date -u +%Y-%m-%dT%H:%M:%SZ)|g" \
+                                            -e "s|SCAN_ID_PLACEHOLDER|\${SCAN_ID}|g" \
+                                            -e "s|DIFF_URL_PLACEHOLDER|\${DIFF_URL}|g" \
+                                            -e "s|GATE_STATUS_CLASS|gate-passed|g" \
+                                            -e "s|GATE_STATUS_MESSAGE|Loading scan results...|g" \
+                                            -e "s|CRITICAL_COUNT|0|g" \
+                                            -e "s|HIGH_COUNT|0|g" \
+                                            -e "s|MEDIUM_COUNT|0|g" \
+                                            -e "s|LOW_COUNT|0|g" \
+                                            ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp
+                                        mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
+
+                                        # Inject JSON directly into HTML using Python (handles escaping properly)
+                                        python3 << 'PYEOF'
+import json
+import sys
+
+# Read the JSON data
+with open('${ARTIFACTS_DIR}/aikido-scan-details.json', 'r') as f:
+    json_data = f.read()
+
+# Read the HTML
+with open('${ARTIFACTS_DIR}/aikido-report.html', 'r') as f:
+    html_content = f.read()
+
+# Replace the placeholder with actual JSON
+html_content = html_content.replace('AIKIDO_JSON_PLACEHOLDER', json_data)
+
+# Write back
+with open('${ARTIFACTS_DIR}/aikido-report.html', 'w') as f:
+    f.write(html_content)
+
+print('✅ Injected ' + str(len(json_data)) + ' bytes of JSON into HTML')
+PYEOF
+
+                                        # Also create separate JS file for reference
+                                        echo "window.aikidoScanData = " > ${ARTIFACTS_DIR}/aikido-scan-data.js
+                                        cat ${ARTIFACTS_DIR}/aikido-scan-details.json >> ${ARTIFACTS_DIR}/aikido-scan-data.js
+                                        echo ";" >> ${ARTIFACTS_DIR}/aikido-scan-data.js
+                                    fi
                                 fi
 
                                 # Generate summary
@@ -243,6 +447,11 @@ spec:
                                 echo "Commit: ${GIT_COMMIT}" >> ${ARTIFACTS_DIR}/build-info.txt
                                 echo "Scan ID: \${SCAN_ID:-N/A}" >> ${ARTIFACTS_DIR}/build-info.txt
                                 echo "Diff URL: \${DIFF_URL:-N/A}" >> ${ARTIFACTS_DIR}/build-info.txt
+
+                                # Copy scan output to summary
+                                echo "" >> ${ARTIFACTS_DIR}/build-info.txt
+                                cat ${ARTIFACTS_DIR}/aikido-scan-output.txt >> ${ARTIFACTS_DIR}/build-info.txt
+                                echo "" >> ${ARTIFACTS_DIR}/build-info.txt
 
                                 echo "✅ Aikido Security Scan completed - check artifacts for detailed results"
                                 if [ -n "\${DIFF_URL}" ]; then
@@ -255,9 +464,12 @@ spec:
             }
             post {
                 always {
-                    // Archive security scan results
+                    // Archive security scan results (text and JSON only)
                     archiveArtifacts artifacts: 'build-artifacts/aikido-scan-output.txt', allowEmptyArchive: true
                     archiveArtifacts artifacts: 'build-artifacts/aikido-scan-details*.json', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'build-artifacts/build-info.txt', allowEmptyArchive: true
+
+                    // HTML report generation disabled - use Aikido dashboard link from scan output
                 }
             }
         }
@@ -299,6 +511,8 @@ EOF
 
                                 echo "✅ Image pushed: ${IMAGE_NAME}:${IMAGE_TAG}"
                             """
+
+                            // Save image info to artifacts (run in maven container to avoid permission issues)
                         }
                     }
                 }
@@ -314,6 +528,7 @@ EOF
         stage('Update Helm Chart') {
             when {
                 expression {
+                    // Only update Helm chart if Docker build succeeded
                     currentBuild.result == null || currentBuild.result == 'SUCCESS'
                 }
             }
@@ -360,12 +575,14 @@ EOF
         stage('ArgoCD Deployment') {
             when {
                 expression {
+                    // Only deploy if Helm chart was updated successfully
                     currentBuild.result == null || currentBuild.result == 'SUCCESS'
                 }
             }
             steps {
                 container('maven') {
                     script {
+                        // Determine which ArgoCD app to sync based on branch
                         def argoApp = ''
                         switch(env.BRANCH_NAME) {
                             case 'develop':
@@ -383,11 +600,13 @@ EOF
                         if (argoApp) {
                             echo "🔄 ArgoCD will auto-sync application: ${argoApp}"
                             echo "📦 Image deployed: ${IMAGE_NAME}:${IMAGE_TAG}"
-                            echo "⏱️  ArgoCD typically syncs within 3 minutes"
+                            echo "⏱️  ArgoCD typically syncs within 3 minutes (default sync interval)"
 
                             sh """
+                                # Save deployment info
                                 echo "ArgoCD App: ${argoApp}" >> ${ARTIFACTS_DIR}/build-info.txt
                                 echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}" >> ${ARTIFACTS_DIR}/build-info.txt
+                                echo "Helm values updated in git" >> ${ARTIFACTS_DIR}/build-info.txt
                             """
                         }
                     }
@@ -403,9 +622,14 @@ EOF
                 container('maven') {
                     script {
                         def argoApp = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev' : 'fitness-tracker-test'
-                        def argoNamespace = 'argocd'
+                        def argoNamespace = 'argocd'  // ArgoCD runs in argocd namespace on kind-igs cluster
                         echo "⏳ Waiting for ArgoCD to sync ${argoApp} with image ${IMAGE_TAG}..."
                         sh """
+                            # Configure kubectl to use in-cluster config
+                            # Jenkins agent pods run inside kind-igs cluster where ArgoCD is installed
+                            export KUBECONFIG=/var/run/secrets/kubernetes.io/serviceaccount/token
+
+                            # Alternative: use kubectl with service account token
                             APISERVER=https://kubernetes.default.svc
                             SERVICEACCOUNT=/var/run/secrets/kubernetes.io/serviceaccount
                             TOKEN=\$(cat \${SERVICEACCOUNT}/token)
@@ -417,6 +641,7 @@ EOF
                                 ATTEMPT=\$((ATTEMPT + 1))
                                 echo "[\$ATTEMPT/\$MAX_ATTEMPTS] Checking ArgoCD sync status..."
 
+                                # Use kubectl with explicit server and token
                                 SYNC_STATUS=\$(kubectl --server=\$APISERVER --token=\$TOKEN --certificate-authority=\$CACERT \\
                                     get app ${argoApp} -n ${argoNamespace} -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "Unknown")
                                 DEPLOYED_IMAGE=\$(kubectl --server=\$APISERVER --token=\$TOKEN --certificate-authority=\$CACERT \\
@@ -424,6 +649,7 @@ EOF
 
                                 echo "  Sync Status: \$SYNC_STATUS"
                                 echo "  Deployed Image: \$DEPLOYED_IMAGE"
+                                echo "  Expected Image: ${IMAGE_NAME}:${IMAGE_TAG}"
 
                                 if [ "\$SYNC_STATUS" = "Synced" ] && echo "\$DEPLOYED_IMAGE" | grep -q "${IMAGE_TAG}"; then
                                     echo "✅ ArgoCD successfully synced with correct image!"
@@ -433,7 +659,9 @@ EOF
                                 sleep 10
                             done
 
-                            echo "⚠️ Timeout waiting for ArgoCD sync, continuing anyway (non-blocking)"
+                            echo "⚠️ Timeout waiting for ArgoCD sync after \$((MAX_ATTEMPTS * 10)) seconds"
+                            echo "⚠️ Current sync status: \$SYNC_STATUS"
+                            echo "⚠️ Continuing pipeline anyway (non-blocking)"
                             exit 0
                         """
                     }
@@ -452,6 +680,7 @@ EOF
                     script {
                         def argoApp = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev' : 'fitness-tracker-test'
                         def appNamespace = env.BRANCH_NAME == 'develop' ? 'dev' : 'test'
+                        // Cross-cluster access: Jenkins (kind-igs) → app clusters via NodePort
                         def appUrl = env.BRANCH_NAME == 'develop' ?
                             'http://172.18.0.5:30830' :
                             'http://172.18.0.7:31397'
@@ -462,9 +691,12 @@ EOF
                         echo "📍 Namespace: ${appNamespace}"
                         echo "📍 App URL (NodePort): ${appUrl}"
 
+                        echo "⏳ Waiting for deployment with correct image..."
                         sh """
+                            # Export kubeconfig (mounted as secret)
                             export KUBECONFIG=/root/.kube/config
 
+                            # Determine target cluster context and namespace
                             TARGET_CONTEXT="${env.BRANCH_NAME == 'develop' ? 'kind-kind-dev' : 'kind-kind-test'}"
                             TARGET_NAMESPACE="${appNamespace}"
                             EXPECTED_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
@@ -472,6 +704,7 @@ EOF
                             echo "Expected Image: \$EXPECTED_IMAGE"
                             echo "Target: \$TARGET_CONTEXT / \$TARGET_NAMESPACE"
 
+                            # Wait up to 5 minutes for correct image to be deployed
                             MAX_ATTEMPTS=30
                             ATTEMPT=0
 
@@ -479,11 +712,14 @@ EOF
                                 ATTEMPT=\$((ATTEMPT + 1))
                                 echo "[\$ATTEMPT/\$MAX_ATTEMPTS] Checking deployment..."
 
+                                # Get actual running image from pods (cross-cluster via kubeconfig)
                                 RUNNING_IMAGE=\$(kubectl --context=\$TARGET_CONTEXT -n \$TARGET_NAMESPACE get pods -l app=fitness-tracker -o jsonpath='{.items[0].spec.containers[0].image}' 2>/dev/null || echo "")
 
                                 echo "  Running Image: \$RUNNING_IMAGE"
 
+                                # Check if image matches
                                 if [ "\$RUNNING_IMAGE" = "\$EXPECTED_IMAGE" ]; then
+                                    # Verify app is also healthy
                                     if curl -s -f ${appUrl}/actuator/health > /dev/null 2>&1; then
                                         echo "✅ Correct image deployed and app is healthy!"
                                         exit 0
@@ -498,6 +734,8 @@ EOF
                             done
 
                             echo "❌ Deployment verification failed after 5 minutes"
+                            echo "Expected: \$EXPECTED_IMAGE"
+                            echo "Got: \$RUNNING_IMAGE"
                             exit 1
                         """
                     }
@@ -505,7 +743,71 @@ EOF
             }
         }
 
-        // NOTE: "Install Testing Tools" stage REMOVED - tools now pre-installed in containers!
+        stage('Install Testing Tools') {
+            when {
+                expression {
+                    currentBuild.result == null || currentBuild.result == 'SUCCESS'
+                }
+            }
+            steps {
+                container('maven') {
+                    echo "📥 Installing all testing tools (SoapUI, JMeter, ZAP)..."
+                    script {
+                        sh """
+                            # Install SoapUI
+                            if [ ! -f /tmp/SoapUI-5.7.0/bin/testrunner.sh ]; then
+                                echo "📥 Downloading SoapUI 5.7.0 (120 MB)..."
+                                cd /tmp
+                                timeout 360 wget --progress=dot:giga https://s3.amazonaws.com/downloads.eviware/soapuios/5.7.0/SoapUI-5.7.0-linux-bin.tar.gz || {
+                                    echo "❌ SoapUI download failed/timeout, will skip SoapUI tests"
+                                    touch ${WORKSPACE}/.soapui-download-failed
+                                    exit 0
+                                }
+                                tar -xzf SoapUI-5.7.0-linux-bin.tar.gz && rm SoapUI-5.7.0-linux-bin.tar.gz
+                                echo "✅ SoapUI installed"
+                            else
+                                echo "✅ SoapUI already installed"
+                            fi
+
+                            # Install JMeter
+                            if [ ! -d /tmp/apache-jmeter-5.6.3 ]; then
+                                echo "📥 Downloading JMeter 5.6.3 (29 MB)..."
+                                cd /tmp
+                                timeout 300 wget --progress=dot:giga https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.6.3.tgz || {
+                                    echo "⚠️ Apache archive slow, trying mirror..."
+                                    timeout 300 wget --progress=dot:giga https://dlcdn.apache.org/jmeter/binaries/apache-jmeter-5.6.3.tgz || {
+                                        echo "❌ JMeter download failed/timeout, will skip JMeter tests"
+                                        touch ${WORKSPACE}/.jmeter-download-failed
+                                        exit 0
+                                    }
+                                }
+                                tar -xzf apache-jmeter-5.6.3.tgz && rm apache-jmeter-5.6.3.tgz
+                                echo "✅ JMeter installed"
+                            else
+                                echo "✅ JMeter already installed"
+                            fi
+
+                            # Install ZAP
+                            if [ ! -d /tmp/ZAP_2.14.0 ]; then
+                                echo "📥 Downloading OWASP ZAP 2.14.0 (460 MB - may take 5-10 minutes)..."
+                                cd /tmp
+                                timeout 600 wget --progress=dot:mega https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2.14.0_Linux.tar.gz || {
+                                    echo "❌ ZAP download failed/timeout, will skip ZAP tests"
+                                    touch ${WORKSPACE}/.zap-download-failed
+                                    exit 0
+                                }
+                                tar -xzf ZAP_2.14.0_Linux.tar.gz && rm ZAP_2.14.0_Linux.tar.gz
+                                echo "✅ ZAP installed"
+                            else
+                                echo "✅ ZAP already installed"
+                            fi
+
+                            echo "✅ All testing tools ready"
+                        """
+                    }
+                }
+            }
+        }
 
         stage('Run Tests in Parallel') {
             when {
@@ -517,21 +819,25 @@ EOF
                 stage('API Testing - SoapUI') {
                     steps {
                         container('maven') {
-                            echo "🧪 Running SoapUI API tests via Maven..."
+                            echo "🧪 Running SoapUI API tests..."
                             script {
                                 sh """
                                     mkdir -p ${ARTIFACTS_DIR}/soapui-reports
 
-                                    # Use SoapUI Maven plugin - most reliable in CI
-                                    if [ -f "pom.xml" ]; then
+                                    if [ -f ${WORKSPACE}/.soapui-download-failed ]; then
+                                        echo "⚠️ SoapUI not installed (download failed), skipping tests"
+                                        echo "SoapUI download failed during installation" > ${ARTIFACTS_DIR}/soapui-reports/summary.txt
+                                        exit 0
+                                    fi
+
+                                    if [ -f "tests/soapui/fitness-tracker-api-tests.xml" ]; then
                                         echo "Running SoapUI tests against ${env.APP_URL}..."
-                                        mvn com.smartbear.soapui:soapui-maven-plugin:test \
-                                            -DprojectFile=tests/soapui/fitness-tracker-api-tests.xml \
-                                            -Dendpoint=${env.APP_URL} \
-                                            -DoutputFolder=${ARTIFACTS_DIR}/soapui-reports \
-                                            -Dmaven.repo.local=/root/.m2/repository || echo "⚠️ SoapUI tests failed (non-blocking)"
+                                        /tmp/SoapUI-5.7.0/bin/testrunner.sh \\
+                                            -f${ARTIFACTS_DIR}/soapui-reports \\
+                                            -PENDPOINT=${env.APP_URL} \\
+                                            tests/soapui/fitness-tracker-api-tests.xml || echo "⚠️ SoapUI tests failed (non-blocking)"
                                     else
-                                        echo "⚠️ No SoapUI project found, creating placeholder..."
+                                        echo "⚠️ No SoapUI test project found, creating placeholder..."
                                         echo "SoapUI test project not configured yet" > ${ARTIFACTS_DIR}/soapui-reports/summary.txt
                                     fi
 
@@ -550,23 +856,34 @@ EOF
                 }
 
                 stage('Performance Testing - JMeter') {
-                    steps {
-                        container('jmeter') {  // Using JMeter container!
-                            echo "⚡ Running JMeter performance tests..."
-                            script {
-                                sh """
-                                    mkdir -p ${ARTIFACTS_DIR}/jmeter-reports
+            when {
+                expression {
+                    currentBuild.result == null || currentBuild.result == 'SUCCESS'
+                }
+            }
+            steps {
+                container('maven') {
+                    echo "⚡ Running JMeter performance tests..."
+                    script {
+                        sh """
+                            mkdir -p ${ARTIFACTS_DIR}/jmeter-reports
 
-                                    if [ -f "tests/jmeter/fitness-tracker-load-test.jmx" ]; then
-                                        echo "Running JMeter performance tests against ${env.APP_URL}..."
-                                        jmeter -n \\
-                                            -t tests/jmeter/fitness-tracker-load-test.jmx \\
-                                            -JAPP_URL=${env.APP_URL} \\
-                                            -l ${ARTIFACTS_DIR}/jmeter-reports/results.jtl \\
-                                            -e -o ${ARTIFACTS_DIR}/jmeter-reports/html || echo "⚠️ JMeter tests failed (non-blocking)"
-                                    else
-                                        echo "⚠️ No JMeter test plan found, creating placeholder..."
-                                        cat > ${ARTIFACTS_DIR}/jmeter-reports/summary.txt << 'JEOF'
+                            if [ -f ${WORKSPACE}/.jmeter-download-failed ]; then
+                                echo "⚠️ JMeter not installed (download failed), skipping tests"
+                                echo "JMeter download failed during installation" > ${ARTIFACTS_DIR}/jmeter-reports/summary.txt
+                                exit 0
+                            fi
+
+                            if [ -f "tests/jmeter/fitness-tracker-load-test.jmx" ]; then
+                                echo "Running JMeter performance tests against ${env.APP_URL}..."
+                                /tmp/apache-jmeter-5.6.3/bin/jmeter -n \\
+                                    -t tests/jmeter/fitness-tracker-load-test.jmx \\
+                                    -JAPP_URL=${env.APP_URL} \\
+                                    -l ${ARTIFACTS_DIR}/jmeter-reports/results.jtl \\
+                                    -e -o ${ARTIFACTS_DIR}/jmeter-reports/html || echo "⚠️ JMeter tests failed (non-blocking)"
+                            else
+                                echo "⚠️ No JMeter test plan found, creating placeholder..."
+                                cat > ${ARTIFACTS_DIR}/jmeter-reports/summary.txt << 'JEOF'
 JMeter Performance Test - Not Configured
 
 To add performance tests:
@@ -579,49 +896,73 @@ Sample test plan:
 - HTTP Samplers: GET /api/health, POST /api/workouts
 - Assertions: Response time < 500ms, Status code 200
 JEOF
-                                    fi
+                            fi
 
-                                    echo "=== JMeter Performance Testing ===" >> ${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Target URL: ${env.APP_URL}" >> ${ARTIFACTS_DIR}/build-info.txt
-                                """
-                            }
-                        }
-                    }
-                    post {
-                        always {
-                            archiveArtifacts artifacts: 'build-artifacts/jmeter-reports/**/*', allowEmptyArchive: true
-                            publishHTML(target: [
-                                allowMissing: true,
-                                alwaysLinkToLastBuild: true,
-                                keepAll: true,
-                                reportDir: 'build-artifacts/jmeter-reports/html',
-                                reportFiles: 'index.html',
-                                reportName: 'JMeter Performance Report'
-                            ])
-                        }
+                            echo "=== JMeter Performance Testing ===" >> ${ARTIFACTS_DIR}/build-info.txt
+                            echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${ARTIFACTS_DIR}/build-info.txt
+                            echo "Target URL: ${env.APP_URL}" >> ${ARTIFACTS_DIR}/build-info.txt
+                        """
                     }
                 }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'build-artifacts/jmeter-reports/**/*', allowEmptyArchive: true
+                    publishHTML(target: [
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'build-artifacts/jmeter-reports/html',
+                        reportFiles: 'index.html',
+                        reportName: 'JMeter Performance Report'
+                    ])
+                }
+            }
+        }
 
-                stage('Security Testing - OWASP ZAP') {
-                    steps {
-                        container('zap') {  // Using ZAP container!
-                            echo "🔐 Running OWASP ZAP security scan..."
-                            script {
-                                sh """
-                                    mkdir -p ${ARTIFACTS_DIR}/zap-reports
+        stage('Security Testing - OWASP ZAP') {
+            when {
+                expression {
+                    currentBuild.result == null || currentBuild.result == 'SUCCESS'
+                }
+            }
+            steps {
+                container('maven') {
+                    echo "🔐 Running OWASP ZAP security scan..."
+                    script {
+                        sh """
+                            mkdir -p ${ARTIFACTS_DIR}/zap-reports
 
-                                    echo "🔐 Running ZAP baseline scan against ${env.APP_URL}..."
+                            # Check if ZAP download failed in installation stage
+                            if [ -f ${WORKSPACE}/.zap-download-failed ]; then
+                                echo "⚠️ ZAP was not installed (download failed), skipping scan"
+                                echo "ZAP download failed during installation" > ${ARTIFACTS_DIR}/zap-reports/summary.txt
+                                exit 0
+                            fi
 
-                                    # Run ZAP baseline scan (built into the container)
-                                    zap-baseline.py \\
-                                        -t ${env.APP_URL} \\
-                                        -r ${ARTIFACTS_DIR}/zap-reports/baseline-report.html \\
-                                        -x ${ARTIFACTS_DIR}/zap-reports/baseline-report.xml \\
-                                        -J ${ARTIFACTS_DIR}/zap-reports/baseline-report.json || echo "⚠️ ZAP scan found issues (non-blocking)"
+                            echo "🔐 Running ZAP baseline scan against ${env.APP_URL}..."
 
-                                    # Create summary
-                                    cat > ${ARTIFACTS_DIR}/zap-reports/summary.txt << 'ZEOF'
+                            # Start ZAP in daemon mode
+                            /tmp/ZAP_2.14.0/zap.sh -daemon -port 8090 -config api.disablekey=true &
+                            ZAP_PID=\$!
+
+                            # Wait for ZAP to start
+                            echo "Waiting for ZAP to initialize..."
+                            sleep 30
+
+                            # Run baseline scan
+                            /tmp/ZAP_2.14.0/zap-baseline.py \\
+                                -t ${env.APP_URL} \\
+                                -r ${ARTIFACTS_DIR}/zap-reports/baseline-report.html \\
+                                -x ${ARTIFACTS_DIR}/zap-reports/baseline-report.xml \\
+                                -J ${ARTIFACTS_DIR}/zap-reports/baseline-report.json \\
+                                -a || echo "⚠️ ZAP scan completed with findings (non-blocking)"
+
+                            # Stop ZAP
+                            kill \$ZAP_PID 2>/dev/null || true
+
+                            # Create summary
+                            cat > ${ARTIFACTS_DIR}/zap-reports/summary.txt << 'ZEOF'
 OWASP ZAP Security Scan Summary
 
 Scan Type: Baseline (passive scan)
@@ -636,26 +977,26 @@ Note: This is a passive scan. For deeper security testing,
 configure an active scan in tests/zap/zap-config.conf
 ZEOF
 
-                                    echo "=== OWASP ZAP Security Testing ===" >> ${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Scan Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Target URL: ${env.APP_URL}" >> ${ARTIFACTS_DIR}/build-info.txt
-                                """
-                            }
-                        }
+                            echo "=== OWASP ZAP Security Testing ===" >> ${ARTIFACTS_DIR}/build-info.txt
+                            echo "Scan Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${ARTIFACTS_DIR}/build-info.txt
+                            echo "Target URL: ${env.APP_URL}" >> ${ARTIFACTS_DIR}/build-info.txt
+                        """
                     }
-                    post {
-                        always {
-                            archiveArtifacts artifacts: 'build-artifacts/zap-reports/**/*', allowEmptyArchive: true
-                            publishHTML(target: [
-                                allowMissing: true,
-                                alwaysLinkToLastBuild: true,
-                                keepAll: true,
-                                reportDir: 'build-artifacts/zap-reports',
-                                reportFiles: 'baseline-report.html',
-                                reportName: 'OWASP ZAP Security Report'
-                            ])
-                        }
-                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'build-artifacts/zap-reports/**/*', allowEmptyArchive: true
+                    publishHTML(target: [
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'build-artifacts/zap-reports',
+                        reportFiles: 'baseline-report.html',
+                        reportName: 'OWASP ZAP Security Report'
+                    ])
+                }
+            }
                 }
             }
         }
@@ -708,24 +1049,27 @@ ZEOF
         <h2>📊 Reports</h2>
         <ul>
             <li>JUnit Test Reports</li>
-            <li>JMeter Performance Report</li>
-            <li>OWASP ZAP Security Report</li>
-            <li>SoapUI API Test Results</li>
+            <li>Build Artifacts</li>
+            <li>Helm Chart Values</li>
         </ul>
     </div>
 </body>
 </html>
 EOF
 
+                            # List all artifacts
                             echo "Artifacts created:"
                             ls -lh ${ARTIFACTS_DIR}
+                            ls -lh ${REPORTS_DIR}
                         """
                     }
                 }
             }
             post {
                 always {
+                    // Archive all artifacts
                     archiveArtifacts artifacts: 'build-artifacts/**/*', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'test-reports/**/*', allowEmptyArchive: true
                 }
             }
         }
@@ -735,6 +1079,7 @@ EOF
                 container('maven') {
                     echo "📊 Publishing metrics to CloudBees Unify..."
                     sh """
+                        # Create build data JSON for Unify
                         cat > ${ARTIFACTS_DIR}/unify-data.json <<EOF
 {
   "build": {
@@ -760,6 +1105,7 @@ EOF
                         cat ${ARTIFACTS_DIR}/unify-data.json
                     """
 
+                    // Archive Unify data
                     archiveArtifacts artifacts: 'build-artifacts/unify-data.json', allowEmptyArchive: true
                 }
             }
@@ -770,9 +1116,12 @@ EOF
         always {
             container('maven') {
                 echo "🧹 Cleanup and final archiving..."
+
+                // Final artifact summary
                 sh """
                     echo "=== Build Artifacts Summary ===" >> ${ARTIFACTS_DIR}/build-info.txt
                     echo "Total artifacts: \$(find ${ARTIFACTS_DIR} -type f | wc -l)" >> ${ARTIFACTS_DIR}/build-info.txt
+                    echo "Total reports: \$(find ${REPORTS_DIR} -type f | wc -l)" >> ${ARTIFACTS_DIR}/build-info.txt
                 """
             }
         }
@@ -790,6 +1139,7 @@ EOF
             container('maven') {
                 echo "❌ Pipeline failed!"
 
+                // Archive failure logs
                 sh """
                     echo "Build failed at: \$(date)" >> ${ARTIFACTS_DIR}/failure.log
                     echo "Stage: ${env.STAGE_NAME}" >> ${ARTIFACTS_DIR}/failure.log || true
@@ -797,16 +1147,19 @@ EOF
 
                 archiveArtifacts artifacts: 'build-artifacts/failure.log', allowEmptyArchive: true
 
+                // Create Jira ticket for pipeline failure
                 script {
                     try {
                         echo "Creating Jira ticket for pipeline failure..."
 
+                        // Capture basic failure information (without using restricted methods)
                         def failedStage = env.STAGE_NAME ?: 'Unknown Stage'
                         def buildResult = currentBuild.result ?: 'FAILURE'
                         def buildDuration = currentBuild.durationString ?: 'Unknown'
 
                         withCredentials([string(credentialsId: 'jira-api-token', variable: 'JIRA_API_TOKEN')]) {
                             sh """
+                                # Create detailed failure description
                                 cat > ${ARTIFACTS_DIR}/failure-details.txt << 'FAILEOF'
 Pipeline Build Failure Report
 
@@ -823,22 +1176,26 @@ Build Information:
 Failure Analysis:
 This build failed during the ${failedStage} stage. Please check:
 1. Console output for specific error messages
-2. Recent code changes
-3. Network connectivity issues
-4. ArgoCD synchronization status
-5. Target cluster accessibility
+2. Recent code changes that may have introduced issues
+3. Network connectivity or timeout issues
+4. Tool installation failures (SoapUI, JMeter, ZAP)
+5. ArgoCD synchronization status
+6. Target cluster accessibility
 
 Links:
 - Console Output: ${BUILD_URL}console
 - Build Artifacts: ${BUILD_URL}artifact/
 - Test Reports: ${BUILD_URL}testReport/
+- Workspace: ${BUILD_URL}ws/
 
 Action Items:
-1. Review console output for errors
-2. Check if this is a recurring failure
+1. Review the full console output for error messages
+2. Check if this is a recurring failure pattern
 3. Verify all external dependencies are accessible
+4. Consider if this requires immediate attention or can wait
 FAILEOF
 
+                                # Create JSON payload with detailed description
                                 cat > ${ARTIFACTS_DIR}/jira-payload.json << 'JSONEOF'
 {
   "fields": {
@@ -862,12 +1219,15 @@ FAILEOF
 }
 JSONEOF
 
+                                # Prepare failure details for JSON (escape newlines and quotes)
                                 FAILURE_TEXT=\$(cat ${ARTIFACTS_DIR}/failure-details.txt | sed 's/"/\\\\"/g' | awk '{printf "%s\\\\n", \$0}')
 
+                                # Replace placeholders
                                 sed -i "s|FITNESS_TRACKER_PLACEHOLDER|${JOB_NAME} #${BUILD_NUMBER}|g" ${ARTIFACTS_DIR}/jira-payload.json
                                 sed -i "s|FAILURE_DETAILS_PLACEHOLDER|\$FAILURE_TEXT|g" ${ARTIFACTS_DIR}/jira-payload.json
                                 sed -i "s|BRANCH_LABEL|${BRANCH_NAME}|g" ${ARTIFACTS_DIR}/jira-payload.json
 
+                                # Create Jira ticket using REST API
                                 echo "📝 Creating Jira ticket with detailed failure information..."
                                 curl -X POST \\
                                   -H "Content-Type: application/json" \\
@@ -877,9 +1237,19 @@ JSONEOF
                                   -o \${ARTIFACTS_DIR}/jira-response.json \\
                                   -w "HTTP Status: %{http_code}\\n"
 
-                                ISSUE_KEY=\$(cat \${ARTIFACTS_DIR}/jira-response.json | grep -o '"key":"[^"]*"' | head -1 | cut -d'"' -f4)
-                                if [ -n "\$ISSUE_KEY" ]; then
-                                    echo "✅ Jira ticket created: \${JIRA_SITE}/browse/\$ISSUE_KEY"
+                                # Show response for debugging
+                                echo "Jira API Response:"
+                                cat \${ARTIFACTS_DIR}/jira-response.json
+
+                                # Extract issue key
+                                if [ -f \${ARTIFACTS_DIR}/jira-response.json ]; then
+                                    ISSUE_KEY=\$(cat \${ARTIFACTS_DIR}/jira-response.json | grep -o '"key":"[^"]*"' | head -1 | cut -d'"' -f4)
+                                    if [ -n "\$ISSUE_KEY" ]; then
+                                        echo "✅ Jira ticket created: \${JIRA_SITE}/browse/\$ISSUE_KEY"
+                                        echo "   Ticket includes: Stage name, failure reason, console output link, artifacts"
+                                    else
+                                        echo "⚠️ Could not extract issue key from response"
+                                    fi
                                 fi
                             """
                         }
@@ -888,6 +1258,9 @@ JSONEOF
                     }
                 }
             }
+        }
+        unstable {
+            echo "⚠️ Pipeline completed with warnings"
         }
     }
 }
