@@ -363,13 +363,24 @@ HTMLEOF
                                         mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
 
                                         # Inject JSON - use Python for simple, safe replacement (no escaping issues)
+                                        echo "DEBUG: Checking if AIKIDO_JSON_PLACEHOLDER exists before replacement..."
+                                        grep -c "AIKIDO_JSON_PLACEHOLDER" ${ARTIFACTS_DIR}/aikido-report.html || echo "PLACEHOLDER NOT FOUND!"
+
                                         python3 -c "
 import sys
 html = open('${ARTIFACTS_DIR}/aikido-report.html', 'r').read()
 json_data = open('${ARTIFACTS_DIR}/aikido-scan-details.json', 'r').read()
+print(f'DEBUG: JSON data length: {len(json_data)} bytes')
+print(f'DEBUG: Placeholder found: {\"AIKIDO_JSON_PLACEHOLDER\" in html}')
 html = html.replace('AIKIDO_JSON_PLACEHOLDER', json_data)
+print(f'DEBUG: After replacement, placeholder still exists: {\"AIKIDO_JSON_PLACEHOLDER\" in html}')
 open('${ARTIFACTS_DIR}/aikido-report.html', 'w').write(html)
 "
+
+                                        echo "DEBUG: Checking if AIKIDO_JSON_PLACEHOLDER was replaced..."
+                                        grep -c "AIKIDO_JSON_PLACEHOLDER" ${ARTIFACTS_DIR}/aikido-report.html || echo "✅ Placeholder replaced!"
+                                        echo "DEBUG: Checking if JSON data is in HTML..."
+                                        grep -c "gate_passed" ${ARTIFACTS_DIR}/aikido-report.html || echo "❌ JSON not found in HTML!"
 
                                         echo "✅ HTML report generated with embedded Aikido JSON data"
                                     fi
