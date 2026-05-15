@@ -318,9 +318,10 @@ JSONEOF
         </table>
     </div>
 
-    <script src="aikido-scan-data.js"></script>
     <script>
-        // Use the external aikidoScanData variable loaded from aikido-scan-data.js
+        // Aikido scan data will be injected here
+        window.aikidoScanData = AIKIDO_JSON_PLACEHOLDER;
+
         const scanData = window.aikidoScanData || {};
         console.log('DEBUG: Loaded scanData:', scanData);
 
@@ -397,12 +398,33 @@ HTMLEOF
                                             ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp
                                         mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
 
-                                        # Create separate JS file with scan data (avoids all escaping issues!)
+                                        # Inject JSON directly into HTML using Python (handles escaping properly)
+                                        python3 << 'PYEOF'
+import json
+import sys
+
+# Read the JSON data
+with open('${ARTIFACTS_DIR}/aikido-scan-details.json', 'r') as f:
+    json_data = f.read()
+
+# Read the HTML
+with open('${ARTIFACTS_DIR}/aikido-report.html', 'r') as f:
+    html_content = f.read()
+
+# Replace the placeholder with actual JSON
+html_content = html_content.replace('AIKIDO_JSON_PLACEHOLDER', json_data)
+
+# Write back
+with open('${ARTIFACTS_DIR}/aikido-report.html', 'w') as f:
+    f.write(html_content)
+
+print('✅ Injected ' + str(len(json_data)) + ' bytes of JSON into HTML')
+PYEOF
+
+                                        # Also create separate JS file for reference
                                         echo "window.aikidoScanData = " > ${ARTIFACTS_DIR}/aikido-scan-data.js
                                         cat ${ARTIFACTS_DIR}/aikido-scan-details.json >> ${ARTIFACTS_DIR}/aikido-scan-data.js
                                         echo ";" >> ${ARTIFACTS_DIR}/aikido-scan-data.js
-
-                                        echo "✅ Created aikido-scan-data.js with \$(wc -c < ${ARTIFACTS_DIR}/aikido-scan-data.js) bytes"
                                     fi
                                 fi
 
