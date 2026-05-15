@@ -38,8 +38,8 @@ spec:
         maxDuration: 3m
 
   # Health check configuration
-  ignoreDifferences:
-    - group: apps
-      kind: Deployment
-      jsonPointers:
-        - /spec/replicas  # Ignore replica count differences (for HPA)
+  # ignoreDifferences:  # Commented out to allow replicaCount updates from values.yaml
+  #   - group: apps
+  #     kind: Deployment
+  #     jsonPointers:
+  #       - /spec/replicas  # Ignore replica count differences (for HPA)
