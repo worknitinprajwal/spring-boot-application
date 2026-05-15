@@ -362,10 +362,14 @@ HTMLEOF
                                             ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp
                                         mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
 
-                                        # Inject JSON - use Perl for safe multi-line replacement (standard in Jenkins)
-                                        perl -pe 'BEGIN{undef \$/;} s/AIKIDO_JSON_PLACEHOLDER/\`cat ${ARTIFACTS_DIR}\/aikido-scan-details.json\`/se' \
-                                            ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp
-                                        mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
+                                        # Inject JSON - use Python for simple, safe replacement (no escaping issues)
+                                        python3 -c "
+import sys
+html = open('${ARTIFACTS_DIR}/aikido-report.html', 'r').read()
+json_data = open('${ARTIFACTS_DIR}/aikido-scan-details.json', 'r').read()
+html = html.replace('AIKIDO_JSON_PLACEHOLDER', json_data)
+open('${ARTIFACTS_DIR}/aikido-report.html', 'w').write(html)
+"
 
                                         echo "✅ HTML report generated with embedded Aikido JSON data"
                                     fi
