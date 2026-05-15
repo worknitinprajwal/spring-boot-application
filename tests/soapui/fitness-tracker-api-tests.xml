@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<con:soapui-project id="fitness-tracker-api-tests" name="Fitness Tracker API Tests" resourceRoot="" soapui-version="5.7.0"
+  xmlns:con="http://eviware.com/soapui/config">
+  <con:settings/>
+  <con:interface xsi:type="con:RestService" id="fitness-tracker-api" name="Fitness Tracker API" type="rest"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <con:settings/>
+    <con:definitionCache type="TEXT" rootPart=""/>
+    <con:endpoints>
+      <con:endpoint>${#Project#BaseURL}</con:endpoint>
+    </con:endpoints>
+    <con:resource name="Health" path="/actuator/health" id="health-resource">
+      <con:settings/>
+      <con:parameters/>
+      <con:method name="Health Check" id="health-check" method="GET">
+        <con:settings/>
+        <con:parameters/>
+        <con:representation type="RESPONSE">
+          <con:mediaType>application/json</con:mediaType>
+          <con:status>200</con:status>
+          <con:params/>
+          <con:element>Response</con:element>
+        </con:representation>
+        <con:request name="Request 1" id="health-check-request" mediaType="application/json">
+          <con:settings>
+            <con:setting id="com.eviware.soapui.impl.wsdl.WsdlRequest@request-headers">&lt;xml-fragment/></con:setting>
+          </con:settings>
+          <con:endpoint>${#Project#BaseURL}</con:endpoint>
+          <con:request/>
+          <con:originalUri>${#Project#BaseURL}/actuator/health</con:originalUri>
+          <con:credentials>
+            <con:authType>No Authorization</con:authType>
+          </con:credentials>
+          <con:jmsConfig JMSDeliveryMode="PERSISTENT"/>
+          <con:jmsPropertyConfig/>
+          <con:parameters/>
+        </con:request>
+      </con:method>
+    </con:resource>
+    <con:resource name="Info" path="/actuator/info" id="info-resource">
+      <con:settings/>
+      <con:parameters/>
+      <con:method name="App Info" id="app-info" method="GET">
+        <con:settings/>
+        <con:parameters/>
+        <con:representation type="RESPONSE">
+          <con:mediaType>application/json</con:mediaType>
+          <con:status>200</con:status>
+          <con:params/>
+          <con:element>Response</con:element>
+        </con:representation>
+        <con:request name="Request 1" id="app-info-request" mediaType="application/json">
+          <con:settings>
+            <con:setting id="com.eviware.soapui.impl.wsdl.WsdlRequest@request-headers">&lt;xml-fragment/></con:setting>
+          </con:settings>
+          <con:endpoint>${#Project#BaseURL}</con:endpoint>
+          <con:request/>
+          <con:originalUri>${#Project#BaseURL}/actuator/info</con:originalUri>
+          <con:credentials>
+            <con:authType>No Authorization</con:authType>
+          </con:credentials>
+          <con:jmsConfig JMSDeliveryMode="PERSISTENT"/>
+          <con:jmsPropertyConfig/>
+          <con:parameters/>
+        </con:request>
+      </con:method>
+    </con:resource>
+    <con:resource name="Metrics" path="/actuator/metrics" id="metrics-resource">
+      <con:settings/>
+      <con:parameters/>
+      <con:method name="Metrics List" id="metrics-list" method="GET">
+        <con:settings/>
+        <con:parameters/>
+        <con:representation type="RESPONSE">
+          <con:mediaType>application/json</con:mediaType>
+          <con:status>200</con:status>
+          <con:params/>
+          <con:element>Response</con:element>
+        </con:representation>
+        <con:request name="Request 1" id="metrics-list-request" mediaType="application/json">
+          <con:settings>
+            <con:setting id="com.eviware.soapui.impl.wsdl.WsdlRequest@request-headers">&lt;xml-fragment/></con:setting>
+          </con:settings>
+          <con:endpoint>${#Project#BaseURL}</con:endpoint>
+          <con:request/>
+          <con:originalUri>${#Project#BaseURL}/actuator/metrics</con:originalUri>
+          <con:credentials>
+            <con:authType>No Authorization</con:authType>
+          </con:credentials>
+          <con:jmsConfig JMSDeliveryMode="PERSISTENT"/>
+          <con:jmsPropertyConfig/>
+          <con:parameters/>
+        </con:request>
+      </con:method>
+    </con:resource>
+  </con:interface>
+  <con:testSuite id="functional-tests" name="Functional Tests">
+    <con:settings/>
+    <con:runType>SEQUENTIAL</con:runType>
+    <con:testCase id="health-tests" failOnError="true" failTestCaseOnErrors="true" keepSession="false" maxResults="0" name="Health Check Tests" searchProperties="true">
+      <con:settings/>
+      <con:testStep type="restrequest" name="Health Check - GET" id="health-check-step">
+        <con:settings/>
+        <con:config service="Fitness Tracker API" resourcePath="/actuator/health" methodName="Health Check" xsi:type="con:RestRequestStep"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+          <con:restRequest name="Health Check - GET" id="health-check-step-request" mediaType="application/json">
+            <con:settings>
+              <con:setting id="com.eviware.soapui.impl.wsdl.WsdlRequest@request-headers">&lt;xml-fragment/></con:setting>
+            </con:settings>
+            <con:endpoint>${#Project#BaseURL}</con:endpoint>
+            <con:request/>
+            <con:originalUri>${#Project#BaseURL}/actuator/health</con:originalUri>
+            <con:assertion type="Valid HTTP Status Codes" id="health-status-assertion" name="Valid HTTP Status Codes">
+              <con:configuration>
+                <codes>200</codes>
+              </con:configuration>
+            </con:assertion>
+            <con:assertion type="JsonPath Match" id="health-up-assertion" name="Status is UP">
+              <con:configuration>
+                <path>$.status</path>
+                <content>UP</content>
+                <allowWildcards>false</allowWildcards>
+                <ignoreNamspaceDifferences>false</ignoreNamspaceDifferences>
+                <ignoreComments>false</ignoreComments>
+              </con:configuration>
+            </con:assertion>
+            <con:assertion type="Response SLA Assertion" id="health-sla-assertion" name="Response Time &lt; 500ms">
+              <con:configuration>
+                <SLA>500</SLA>
+              </con:configuration>
+            </con:assertion>
+            <con:credentials>
+              <con:authType>No Authorization</con:authType>
+            </con:credentials>
+            <con:jmsConfig JMSDeliveryMode="PERSISTENT"/>
+            <con:jmsPropertyConfig/>
+            <con:parameters/>
+          </con:restRequest>
+        </con:config>
+      </con:testStep>
+      <con:properties/>
+    </con:testCase>
+    <con:testCase id="info-tests" failOnError="true" failTestCaseOnErrors="true" keepSession="false" maxResults="0" name="Info Endpoint Tests" searchProperties="true">
+      <con:settings/>
+      <con:testStep type="restrequest" name="App Info - GET" id="info-step">
+        <con:settings/>
+        <con:config service="Fitness Tracker API" resourcePath="/actuator/info" methodName="App Info" xsi:type="con:RestRequestStep"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+          <con:restRequest name="App Info - GET" id="info-step-request" mediaType="application/json">
+            <con:settings>
+              <con:setting id="com.eviware.soapui.impl.wsdl.WsdlRequest@request-headers">&lt;xml-fragment/></con:setting>
+            </con:settings>
+            <con:endpoint>${#Project#BaseURL}</con:endpoint>
+            <con:request/>
+            <con:originalUri>${#Project#BaseURL}/actuator/info</con:originalUri>
+            <con:assertion type="Valid HTTP Status Codes" id="info-status-assertion" name="Valid HTTP Status Codes">
+              <con:configuration>
+                <codes>200</codes>
+              </con:configuration>
+            </con:assertion>
+            <con:assertion type="Response SLA Assertion" id="info-sla-assertion" name="Response Time &lt; 300ms">
+              <con:configuration>
+                <SLA>300</SLA>
+              </con:configuration>
+            </con:assertion>
+            <con:credentials>
+              <con:authType>No Authorization</con:authType>
+            </con:credentials>
+            <con:jmsConfig JMSDeliveryMode="PERSISTENT"/>
+            <con:jmsPropertyConfig/>
+            <con:parameters/>
+          </con:restRequest>
+        </con:config>
+      </con:testStep>
+      <con:properties/>
+    </con:testCase>
+    <con:testCase id="metrics-tests" failOnError="true" failTestCaseOnErrors="true" keepSession="false" maxResults="0" name="Metrics Endpoint Tests" searchProperties="true">
+      <con:settings/>
+      <con:testStep type="restrequest" name="Metrics - GET" id="metrics-step">
+        <con:settings/>
+        <con:config service="Fitness Tracker API" resourcePath="/actuator/metrics" methodName="Metrics List" xsi:type="con:RestRequestStep"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+          <con:restRequest name="Metrics - GET" id="metrics-step-request" mediaType="application/json">
+            <con:settings>
+              <con:setting id="com.eviware.soapui.impl.wsdl.WsdlRequest@request-headers">&lt;xml-fragment/></con:setting>
+            </con:settings>
+            <con:endpoint>${#Project#BaseURL}</con:endpoint>
+            <con:request/>
+            <con:originalUri>${#Project#BaseURL}/actuator/metrics</con:originalUri>
+            <con:assertion type="Valid HTTP Status Codes" id="metrics-status-assertion" name="Valid HTTP Status Codes">
+              <con:configuration>
+                <codes>200</codes>
+              </con:configuration>
+            </con:assertion>
+            <con:assertion type="JsonPath Match" id="metrics-names-assertion" name="Has Metrics Names">
+              <con:configuration>
+                <path>$.names</path>
+                <content>.*</content>
+                <allowWildcards>true</allowWildcards>
+                <ignoreNamspaceDifferences>false</ignoreNamspaceDifferences>
+                <ignoreComments>false</ignoreComments>
+              </con:configuration>
+            </con:assertion>
+            <con:assertion type="Response SLA Assertion" id="metrics-sla-assertion" name="Response Time &lt; 1000ms">
+              <con:configuration>
+                <SLA>1000</SLA>
+              </con:configuration>
+            </con:assertion>
+            <con:credentials>
+              <con:authType>No Authorization</con:authType>
+            </con:credentials>
+            <con:jmsConfig JMSDeliveryMode="PERSISTENT"/>
+            <con:jmsPropertyConfig/>
+            <con:parameters/>
+          </con:restRequest>
+        </con:config>
+      </con:testStep>
+      <con:properties/>
+    </con:testCase>
+    <con:properties/>
+  </con:testSuite>
+  <con:properties>
+    <con:property>
+      <con:name>BaseURL</con:name>
+      <con:value>http://localhost:8080</con:value>
+    </con:property>
+  </con:properties>
+  <con:wssContainer/>
+  <con:oAuth2ProfileContainer/>
+  <con:oAuth1ProfileContainer/>
+  <con:sensitiveInformation/>
+</con:soapui-project>
