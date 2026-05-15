@@ -725,24 +725,34 @@ EOF
                     echo "📥 Installing all testing tools (SoapUI, JMeter, ZAP)..."
                     script {
                         sh """
-                            # Install SoapUI
+                            # Install SoapUI (non-blocking if fails)
                             if [ ! -f /tmp/SoapUI-5.7.0/bin/testrunner.sh ]; then
-                                echo "📥 Downloading SoapUI 5.7.0..."
+                                echo "📥 Downloading SoapUI 5.7.0 (120 MB)..."
                                 cd /tmp
-                                timeout 180 wget --progress=dot:giga https://s3.amazonaws.com/downloads.eviware/soapuios/5.7.0/SoapUI-5.7.0-linux-bin.tar.gz
+                                timeout 360 wget --progress=dot:giga https://s3.amazonaws.com/downloads.eviware/soapuios/5.7.0/SoapUI-5.7.0-linux-bin.tar.gz || {
+                                    echo "❌ SoapUI download failed/timeout, will skip SoapUI tests"
+                                    touch /tmp/soapui-download-failed
+                                    # Continue with other tools
+                                    exit 0
+                                }
                                 tar -xzf SoapUI-5.7.0-linux-bin.tar.gz && rm SoapUI-5.7.0-linux-bin.tar.gz
                                 echo "✅ SoapUI installed"
                             else
                                 echo "✅ SoapUI already installed"
                             fi
 
-                            # Install JMeter
+                            # Install JMeter (non-blocking if fails)
                             if [ ! -d /tmp/apache-jmeter-5.6.3 ]; then
                                 echo "📥 Downloading JMeter 5.6.3 (29 MB)..."
                                 cd /tmp
-                                timeout 180 wget --progress=dot:giga https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.6.3.tgz || {
+                                timeout 300 wget --progress=dot:giga https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.6.3.tgz || {
                                     echo "⚠️ Apache archive slow, trying mirror..."
-                                    wget --progress=dot:giga https://dlcdn.apache.org/jmeter/binaries/apache-jmeter-5.6.3.tgz
+                                    timeout 300 wget --progress=dot:giga https://dlcdn.apache.org/jmeter/binaries/apache-jmeter-5.6.3.tgz || {
+                                        echo "❌ JMeter download failed, will skip JMeter tests"
+                                        touch /tmp/jmeter-download-failed
+                                        # Continue with other tools
+                                        cd /tmp && exit 0
+                                    }
                                 }
                                 tar -xzf apache-jmeter-5.6.3.tgz && rm apache-jmeter-5.6.3.tgz
                                 echo "✅ JMeter installed"
@@ -787,6 +797,13 @@ EOF
                                 sh """
                                     mkdir -p ${ARTIFACTS_DIR}/soapui-reports
 
+                                    # Check if download failed
+                                    if [ -f /tmp/soapui-download-failed ]; then
+                                        echo "⚠️ SoapUI not installed (download failed), skipping tests"
+                                        echo "SoapUI download failed during installation" > ${ARTIFACTS_DIR}/soapui-reports/summary.txt
+                                        exit 0
+                                    fi
+
                                     if [ -f "tests/soapui/fitness-tracker-api-tests.xml" ]; then
                                         echo "Running SoapUI tests against ${env.APP_URL}..."
                                         /tmp/SoapUI-5.7.0/bin/testrunner.sh \\
@@ -824,6 +841,13 @@ EOF
                     script {
                         sh """
                             mkdir -p ${ARTIFACTS_DIR}/jmeter-reports
+
+                            # Check if download failed
+                            if [ -f /tmp/jmeter-download-failed ]; then
+                                echo "⚠️ JMeter not installed (download failed), skipping tests"
+                                echo "JMeter download failed during installation" > ${ARTIFACTS_DIR}/jmeter-reports/summary.txt
+                                exit 0
+                            fi
 
                             if [ -f "tests/jmeter/fitness-tracker-load-test.jmx" ]; then
                                 echo "Running JMeter performance tests against ${env.APP_URL}..."
