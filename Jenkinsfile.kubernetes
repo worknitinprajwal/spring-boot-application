@@ -402,7 +402,7 @@ HTMLEOF
                                         cat ${ARTIFACTS_DIR}/aikido-scan-details.json >> ${ARTIFACTS_DIR}/aikido-scan-data.js
                                         echo ";" >> ${ARTIFACTS_DIR}/aikido-scan-data.js
 
-                                        echo "✅ Created aikido-scan-data.js with $(wc -c < ${ARTIFACTS_DIR}/aikido-scan-data.js) bytes"
+                                        echo "✅ Created aikido-scan-data.js with \$(wc -c < ${ARTIFACTS_DIR}/aikido-scan-data.js) bytes"
                                     fi
                                 fi
 
