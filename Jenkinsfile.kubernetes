@@ -715,7 +715,46 @@ EOF
                     }
                     post {
                         always {
+                            // Archive all API test results and response files
                             archiveArtifacts artifacts: 'build-artifacts/api-tests/**/*', allowEmptyArchive: true
+
+                            // Also create an HTML version of the test results for easy viewing
+                            script {
+                                sh """
+                                    if [ -f "\${ARTIFACTS_DIR}/api-tests/test-results.txt" ]; then
+                                        cat > \${ARTIFACTS_DIR}/api-tests/index.html << 'HTMLEOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>API Functional Test Results</title>
+    <style>
+        body { font-family: monospace; background: #1e1e1e; color: #d4d4d4; padding: 20px; }
+        pre { background: #252526; padding: 20px; border-radius: 5px; overflow-x: auto; }
+        .pass { color: #4ec9b0; }
+        .fail { color: #f48771; }
+        h1 { color: #569cd6; }
+    </style>
+</head>
+<body>
+    <h1>🧪 REST API Functional Test Results</h1>
+    <p>Build: ${BUILD_NUMBER} | Branch: ${BRANCH_NAME}</p>
+    <pre>
+HTMLEOF
+                                        cat \${ARTIFACTS_DIR}/api-tests/test-results.txt | sed 's/✅/<span class="pass">✅<\\/span>/g' | sed 's/❌/<span class="fail">❌<\\/span>/g' >> \${ARTIFACTS_DIR}/api-tests/index.html
+                                        echo '</pre></body></html>' >> \${ARTIFACTS_DIR}/api-tests/index.html
+                                    fi
+                                """
+                            }
+
+                            // Publish HTML report
+                            publishHTML(target: [
+                                allowMissing: true,
+                                alwaysLinkToLastBuild: true,
+                                keepAll: true,
+                                reportDir: 'build-artifacts/api-tests',
+                                reportFiles: 'index.html',
+                                reportName: 'API Functional Tests'
+                            ])
                         }
                     }
                 }
@@ -910,7 +949,13 @@ AWKEOF
                     }
                     post {
                         always {
+                            // Archive all JMeter reports (HTML dashboard, JTL, logs, metrics)
                             archiveArtifacts artifacts: 'build-artifacts/jmeter-reports/**/*', allowEmptyArchive: true
+
+                            // Archive the JMeter test plan for reference
+                            archiveArtifacts artifacts: 'tests/jmeter/*.jmx', allowEmptyArchive: true
+
+                            // Publish interactive HTML report
                             publishHTML(target: [
                                 allowMissing: true,
                                 alwaysLinkToLastBuild: true,
@@ -1037,7 +1082,10 @@ ZAPEOF
                     }
                     post {
                         always {
+                            // Archive all ZAP reports (HTML, JSON, XML, Markdown, metrics)
                             archiveArtifacts artifacts: 'build-artifacts/zap-reports/**/*', allowEmptyArchive: true
+
+                            // Publish interactive HTML security report
                             publishHTML(target: [
                                 allowMissing: true,
                                 alwaysLinkToLastBuild: true,
@@ -1123,6 +1171,209 @@ EOF
                     echo "📦 Collecting all build artifacts..."
                     script {
                         sh """
+                            # Create test reports index page
+                            cat > ${ARTIFACTS_DIR}/test-reports-index.html << 'INDEXEOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Reports - Build ${BUILD_NUMBER}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+        .header h1 { font-size: 2.5em; margin-bottom: 10px; }
+        .header p { opacity: 0.9; font-size: 1.1em; }
+        .content { padding: 40px; }
+        .section {
+            margin-bottom: 40px;
+            padding: 30px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 5px solid #667eea;
+        }
+        .section h2 {
+            color: #2c3e50;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .reports-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        .report-card {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .report-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
+        }
+        .report-card h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        .report-card p {
+            color: #666;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+        .btn {
+            display: inline-block;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+        .btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        .info-box {
+            background: #e8f4f8;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border-left: 4px solid #3498db;
+        }
+        .info-box strong { color: #2c3e50; }
+        .artifact-list {
+            list-style: none;
+            margin-top: 15px;
+        }
+        .artifact-list li {
+            padding: 12px;
+            margin-bottom: 8px;
+            background: white;
+            border-radius: 6px;
+            border-left: 3px solid #667eea;
+        }
+        .artifact-list a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .artifact-list a:hover { text-decoration: underline; }
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            background: #667eea;
+            color: white;
+            border-radius: 12px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📊 Test Reports Dashboard</h1>
+            <p>Build #${BUILD_NUMBER} | Branch: ${BRANCH_NAME} | ${IMAGE_TAG}</p>
+        </div>
+
+        <div class="content">
+            <div class="section">
+                <h2>🧪 Test Reports</h2>
+                <div class="reports-grid">
+                    <div class="report-card">
+                        <h3>API Functional Tests</h3>
+                        <p>REST API endpoint validation with latency measurement and health checks.</p>
+                        <span class="badge">Functional</span>
+                        <br><br>
+                        <a href="api-tests/index.html" class="btn">View Report</a>
+                    </div>
+
+                    <div class="report-card">
+                        <h3>JMeter Performance</h3>
+                        <p>Load testing with 50 concurrent users. Includes response time percentiles and throughput analysis.</p>
+                        <span class="badge">Performance</span>
+                        <br><br>
+                        <a href="jmeter-reports/html/index.html" class="btn">View Report</a>
+                    </div>
+
+                    <div class="report-card">
+                        <h3>OWASP ZAP Security</h3>
+                        <p>Security vulnerability scan with detailed findings and remediation guidance.</p>
+                        <span class="badge">Security</span>
+                        <br><br>
+                        <a href="zap-reports/baseline-report.html" class="btn">View Report</a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>📄 Raw Artifacts</h2>
+                <ul class="artifact-list">
+                    <li><a href="api-tests/test-results.txt">API Test Results (TXT)</a></li>
+                    <li><a href="api-tests/health-response.json">Health Endpoint Response (JSON)</a></li>
+                    <li><a href="api-tests/info-response.json">Info Endpoint Response (JSON)</a></li>
+                    <li><a href="api-tests/metrics-response.json">Metrics Endpoint Response (JSON)</a></li>
+                    <li><a href="jmeter-reports/results.jtl">JMeter Raw Results (JTL)</a></li>
+                    <li><a href="jmeter-reports/metrics-summary.txt">JMeter Metrics Summary (TXT)</a></li>
+                    <li><a href="jmeter-reports/jmeter.log">JMeter Execution Log</a></li>
+                    <li><a href="zap-reports/baseline-report.json">ZAP Report (JSON)</a></li>
+                    <li><a href="zap-reports/baseline-report.xml">ZAP Report (XML)</a></li>
+                    <li><a href="zap-reports/baseline-report.md">ZAP Report (Markdown)</a></li>
+                    <li><a href="zap-reports/metrics-summary.txt">ZAP Metrics Summary (TXT)</a></li>
+                    <li><a href="build-info.txt">Consolidated Build Info</a></li>
+                    <li><a href="metrics.json">Metrics JSON</a></li>
+                </ul>
+            </div>
+
+            <div class="section">
+                <h2>📦 Build Information</h2>
+                <div class="info-box">
+                    <p><strong>Build Number:</strong> ${BUILD_NUMBER}</p>
+                    <p><strong>Branch:</strong> ${BRANCH_NAME}</p>
+                    <p><strong>Image:</strong> ${IMAGE_NAME}:${IMAGE_TAG}</p>
+                    <p><strong>Build URL:</strong> <a href="${BUILD_URL}">${BUILD_URL}</a></p>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>📚 Documentation</h2>
+                <ul class="artifact-list">
+                    <li><a href="../tests/COMPREHENSIVE-TESTING-GUIDE.md" target="_blank">Comprehensive Testing Guide</a></li>
+                    <li><a href="../tests/TESTING-SUMMARY.md" target="_blank">Testing Summary</a></li>
+                    <li><a href="../tests/TEST-REPORTS-GUIDE.md" target="_blank">Test Reports Guide</a></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+INDEXEOF
+
                             # Create comprehensive build report
                             cat > ${ARTIFACTS_DIR}/build-summary.html << 'EOF'
 <!DOCTYPE html>
@@ -1182,7 +1433,27 @@ EOF
             }
             post {
                 always {
+                    // Archive all build artifacts (HTML reports, JSON, logs, etc.)
                     archiveArtifacts artifacts: 'build-artifacts/**/*', allowEmptyArchive: true
+
+                    // Archive test documentation
+                    archiveArtifacts artifacts: 'tests/COMPREHENSIVE-TESTING-GUIDE.md', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'tests/TESTING-SUMMARY.md', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'tests/TEST-REPORTS-GUIDE.md', allowEmptyArchive: true
+
+                    // Archive test configuration files
+                    archiveArtifacts artifacts: 'tests/**/*.jmx', allowEmptyArchive: true
+                    archiveArtifacts artifacts: 'tests/**/*.xml', allowEmptyArchive: true
+
+                    // Publish the main test reports index page
+                    publishHTML(target: [
+                        allowMissing: true,
+                        alwaysLinkToLastBuild: true,
+                        keepAll: true,
+                        reportDir: 'build-artifacts',
+                        reportFiles: 'test-reports-index.html',
+                        reportName: 'Test Reports Dashboard'
+                    ])
                 }
             }
         }
