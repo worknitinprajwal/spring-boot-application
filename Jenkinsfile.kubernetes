@@ -1152,10 +1152,10 @@ EOF
                     try {
                         echo "Creating Jira ticket for pipeline failure..."
 
-                        // Capture detailed failure information
+                        // Capture basic failure information (without using restricted methods)
                         def failedStage = env.STAGE_NAME ?: 'Unknown Stage'
-                        def buildLog = currentBuild.rawBuild.getLog(100).join('\n')
-                        def failureReason = buildLog.findAll(/(?i)(error|failed|exception|timeout).*/).take(5).join('\n')
+                        def buildResult = currentBuild.result ?: 'FAILURE'
+                        def buildDuration = currentBuild.durationString ?: 'Unknown'
 
                         withCredentials([string(credentialsId: 'jira-api-token', variable: 'JIRA_API_TOKEN')]) {
                             sh """
@@ -1168,21 +1168,31 @@ Build Information:
 - Build Number: ${BUILD_NUMBER}
 - Branch: ${BRANCH_NAME}
 - Failed Stage: ${failedStage}
+- Build Result: ${buildResult}
+- Duration: ${buildDuration}
 - Build URL: ${BUILD_URL}
+- Timestamp: \$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-Failure Details:
-${failureReason}
+Failure Analysis:
+This build failed during the ${failedStage} stage. Please check:
+1. Console output for specific error messages
+2. Recent code changes that may have introduced issues
+3. Network connectivity or timeout issues
+4. Tool installation failures (SoapUI, JMeter, ZAP)
+5. ArgoCD synchronization status
+6. Target cluster accessibility
 
 Links:
 - Console Output: ${BUILD_URL}console
 - Build Artifacts: ${BUILD_URL}artifact/
+- Test Reports: ${BUILD_URL}testReport/
 - Workspace: ${BUILD_URL}ws/
 
-Recommendation:
-1. Review the console output at the failed stage
-2. Check recent code changes in this branch
-3. Verify all dependencies and tools are properly installed
-4. Check if this is a transient network/timeout issue
+Action Items:
+1. Review the full console output for error messages
+2. Check if this is a recurring failure pattern
+3. Verify all external dependencies are accessible
+4. Consider if this requires immediate attention or can wait
 FAILEOF
 
                                 # Create JSON payload with detailed description
