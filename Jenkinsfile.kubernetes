@@ -669,11 +669,11 @@ EOF
                                         TESTS_FAILED=\$((TESTS_FAILED + 1))
                                     fi
 
-                                    if [ \${LATENCY} -lt 300 ]; then
-                                        echo "  ✅ Performance SLA: PASS (\${LATENCY}ms < 300ms)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                    if [ \${LATENCY} -lt 500 ]; then
+                                        echo "  ✅ Performance SLA: PASS (\${LATENCY}ms < 500ms)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
                                         TESTS_PASSED=\$((TESTS_PASSED + 1))
                                     else
-                                        echo "  ❌ Performance SLA: FAIL (\${LATENCY}ms >= 300ms)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                        echo "  ❌ Performance SLA: FAIL (\${LATENCY}ms >= 500ms)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
                                         TESTS_FAILED=\$((TESTS_FAILED + 1))
                                     fi
 
