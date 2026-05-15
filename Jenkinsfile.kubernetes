@@ -993,10 +993,10 @@ AWKEOF
                                             apk add --no-cache bc 2>/dev/null || echo "Warning: bc not available in this container"
                                         fi
 
-                                        # Parse metrics and enforce SLAs
-                                        SUCCESS_RATE=\$(grep "METRIC:success_rate=" \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt | cut -d'=' -f2)
-                                        AVG_TIME=\$(grep "METRIC:avg_response_time=" \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt | cut -d'=' -f2)
-                                        FAILED_COUNT=\$(grep "METRIC:failed_count=" \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt | cut -d'=' -f2)
+                                        # Parse metrics and enforce SLAs (use tail -1 to get the accurate grep-based values)
+                                        SUCCESS_RATE=\$(grep "METRIC:success_rate=" \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt | tail -1 | cut -d'=' -f2)
+                                        AVG_TIME=\$(grep "METRIC:avg_response_time=" \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt | tail -1 | cut -d'=' -f2)
+                                        FAILED_COUNT=\$(grep "METRIC:failed_count=" \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt | tail -1 | cut -d'=' -f2)
 
                                         echo "" | tee -a \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
                                         echo "SLA Validation:" | tee -a \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
