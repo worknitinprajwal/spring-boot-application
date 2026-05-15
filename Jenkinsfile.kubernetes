@@ -916,10 +916,26 @@ HTMLEOF
                                     echo "Running JMeter load test against \${APP_URL}..."
                                     echo "Configuration: 50 threads, 30s ramp-up, 120s duration"
 
+                                    # Extract domain and port from APP_URL for JMeter
+                                    APP_DOMAIN=\$(echo "\${APP_URL}" | sed -E 's|https?://([^:/]+).*|\\1|')
+                                    APP_PORT=\$(echo "\${APP_URL}" | sed -E 's|https?://[^:]+:([0-9]+).*|\\1|')
+
+                                    # If port not found in URL, use default (80 for http, 443 for https)
+                                    if [ "\${APP_PORT}" = "\${APP_URL}" ]; then
+                                        if echo "\${APP_URL}" | grep -q "^https"; then
+                                            APP_PORT=443
+                                        else
+                                            APP_PORT=80
+                                        fi
+                                    fi
+
+                                    echo "Using domain: \${APP_DOMAIN}, port: \${APP_PORT}"
+
                                     # Run JMeter with production-level configuration
                                     jmeter -n \\
                                         -t tests/jmeter/fitness-tracker-load-test.jmx \\
-                                        -JAPP_URL=\${APP_URL} \\
+                                        -JAPP_DOMAIN=\${APP_DOMAIN} \\
+                                        -JAPP_PORT=\${APP_PORT} \\
                                         -JTHREADS=50 \\
                                         -JRAMP_UP=30 \\
                                         -JDURATION=120 \\
@@ -1038,6 +1054,12 @@ AWKEOF
 
                                         awk -f /tmp/jmeter-analyze.awk \${ARTIFACTS_DIR}/jmeter-reports/results.jtl | tee \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
 
+                                        # Install bc for SLA validation math
+                                        if ! command -v bc &> /dev/null; then
+                                            echo "📥 Installing bc for math calculations..."
+                                            apt-get update -qq && apt-get install -y -qq bc
+                                        fi
+
                                         # Parse metrics and enforce SLAs
                                         SUCCESS_RATE=\$(grep "METRIC:success_rate=" \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt | cut -d'=' -f2)
                                         AVG_TIME=\$(grep "METRIC:avg_response_time=" \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt | cut -d'=' -f2)
@@ -1141,13 +1163,20 @@ AWKEOF
                                     # Install ZAP if not available
                                     if ! command -v zap-baseline.py &> /dev/null; then
                                         echo "📥 Installing OWASP ZAP..."
-                                        # Install Python3 and pip if not available
-                                        apt-get update -qq && apt-get install -y -qq python3 python3-pip wget openjdk-11-jre-headless || true
+                                        # Install minimal dependencies only
+                                        if ! command -v python3 &> /dev/null || ! command -v wget &> /dev/null; then
+                                            apt-get update -qq
+                                            apt-get install -y -qq --no-install-recommends python3 wget openjdk-11-jre-headless
+                                            apt-get clean && rm -rf /var/lib/apt/lists/*
+                                        fi
 
                                         # Download and install ZAP
                                         cd /tmp
-                                        wget -q https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2.14.0_Linux.tar.gz
-                                        tar -xzf ZAP_2.14.0_Linux.tar.gz
+                                        if [ ! -d "/tmp/ZAP_2.14.0" ]; then
+                                            wget -q https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2.14.0_Linux.tar.gz
+                                            tar -xzf ZAP_2.14.0_Linux.tar.gz
+                                            rm ZAP_2.14.0_Linux.tar.gz
+                                        fi
                                         export PATH=\$PATH:/tmp/ZAP_2.14.0
                                         cd -
                                         echo "✅ ZAP installed"
