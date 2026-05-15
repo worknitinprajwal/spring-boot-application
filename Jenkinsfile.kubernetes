@@ -477,32 +477,62 @@ EOF
                             echo "Expected Image: \$EXPECTED_IMAGE"
                             echo "Target: \$TARGET_CONTEXT / \$TARGET_NAMESPACE"
 
-                            MAX_ATTEMPTS=30
+                            MAX_ATTEMPTS=40
                             ATTEMPT=0
 
                             while [ \$ATTEMPT -lt \$MAX_ATTEMPTS ]; do
                                 ATTEMPT=\$((ATTEMPT + 1))
                                 echo "[\$ATTEMPT/\$MAX_ATTEMPTS] Checking deployment..."
 
+                                # Check if pod exists and is running
+                                POD_STATUS=\$(kubectl --context=\$TARGET_CONTEXT -n \$TARGET_NAMESPACE get pods -l app=fitness-tracker -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "")
                                 RUNNING_IMAGE=\$(kubectl --context=\$TARGET_CONTEXT -n \$TARGET_NAMESPACE get pods -l app=fitness-tracker -o jsonpath='{.items[0].spec.containers[0].image}' 2>/dev/null || echo "")
 
+                                echo "  Pod Status: \$POD_STATUS"
                                 echo "  Running Image: \$RUNNING_IMAGE"
 
-                                if [ "\$RUNNING_IMAGE" = "\$EXPECTED_IMAGE" ]; then
-                                    if curl -s -f ${appUrl}/actuator/health > /dev/null 2>&1; then
-                                        echo "✅ Correct image deployed and app is healthy!"
-                                        exit 0
-                                    else
-                                        echo "  Image correct but app not healthy yet..."
-                                    fi
+                                # First check if correct image is deployed
+                                if [ "\$RUNNING_IMAGE" = "\$EXPECTED_IMAGE" ] && [ "\$POD_STATUS" = "Running" ]; then
+                                    # Wait a bit for the app to fully start
+                                    echo "  Correct image deployed, waiting for app to be ready..."
+                                    sleep 5
+
+                                    # Check health endpoint with retries
+                                    HEALTH_ATTEMPTS=0
+                                    while [ \$HEALTH_ATTEMPTS -lt 5 ]; do
+                                        HEALTH_ATTEMPTS=\$((HEALTH_ATTEMPTS + 1))
+
+                                        if curl -s -f --connect-timeout 5 --max-time 10 ${appUrl}/actuator/health > /dev/null 2>&1; then
+                                            echo "✅ Correct image deployed and app is healthy!"
+
+                                            # Additional verification - check response content
+                                            HEALTH_RESPONSE=\$(curl -s --connect-timeout 5 --max-time 10 ${appUrl}/actuator/health)
+                                            if echo "\$HEALTH_RESPONSE" | grep -q '"status":"UP"'; then
+                                                echo "✅ Health check passed with UP status"
+                                                exit 0
+                                            fi
+                                        fi
+
+                                        echo "  Health check attempt \$HEALTH_ATTEMPTS/5 failed, retrying..."
+                                        sleep 3
+                                    done
+
+                                    echo "  Image correct but app not responding to health checks yet..."
                                 else
-                                    echo "  Image mismatch, waiting for ArgoCD to sync..."
+                                    if [ -z "\$RUNNING_IMAGE" ]; then
+                                        echo "  No pod found yet, waiting for deployment..."
+                                    else
+                                        echo "  Image mismatch or pod not running, waiting for ArgoCD to sync..."
+                                    fi
                                 fi
 
                                 sleep 10
                             done
 
-                            echo "❌ Deployment verification failed after 5 minutes"
+                            echo "❌ Deployment verification failed after ~7 minutes"
+                            echo "Final pod status:"
+                            kubectl --context=\$TARGET_CONTEXT -n \$TARGET_NAMESPACE get pods -l app=fitness-tracker || true
+                            kubectl --context=\$TARGET_CONTEXT -n \$TARGET_NAMESPACE describe pods -l app=fitness-tracker || true
                             exit 1
                         """
                     }
@@ -772,6 +802,26 @@ HTMLEOF
                                         exit 1
                                     fi
 
+                                    # Pre-flight check - verify app is responding
+                                    echo "Running pre-flight health check..."
+                                    MAX_PREFLIGHT_ATTEMPTS=10
+                                    PREFLIGHT_ATTEMPT=0
+                                    while [ \$PREFLIGHT_ATTEMPT -lt \$MAX_PREFLIGHT_ATTEMPTS ]; do
+                                        PREFLIGHT_ATTEMPT=\$((PREFLIGHT_ATTEMPT + 1))
+                                        if curl -s -f --connect-timeout 5 --max-time 10 \${APP_URL}/actuator/health > /dev/null 2>&1; then
+                                            echo "✅ Pre-flight check passed - app is responding"
+                                            break
+                                        fi
+                                        echo "Pre-flight attempt \$PREFLIGHT_ATTEMPT/\$MAX_PREFLIGHT_ATTEMPTS failed, retrying in 5s..."
+                                        sleep 5
+                                    done
+
+                                    if [ \$PREFLIGHT_ATTEMPT -ge \$MAX_PREFLIGHT_ATTEMPTS ]; then
+                                        echo "❌ Pre-flight check failed - app not responding at \${APP_URL}"
+                                        echo "Skipping performance test to avoid false failures"
+                                        exit 1
+                                    fi
+
                                     echo "Running JMeter load test against \${APP_URL}..."
                                     echo "Configuration: 50 threads, 30s ramp-up, 120s duration"
 
@@ -975,6 +1025,26 @@ AWKEOF
                             script {
                                 sh script: """
                                     set +e  # Don't fail immediately on ZAP errors (it returns non-zero on findings)
+
+                                    # Pre-flight check - verify app is responding
+                                    echo "Running pre-flight health check..."
+                                    MAX_PREFLIGHT_ATTEMPTS=10
+                                    PREFLIGHT_ATTEMPT=0
+                                    while [ \$PREFLIGHT_ATTEMPT -lt \$MAX_PREFLIGHT_ATTEMPTS ]; do
+                                        PREFLIGHT_ATTEMPT=\$((PREFLIGHT_ATTEMPT + 1))
+                                        if wget --spider --timeout=10 --tries=1 \${APP_URL}/actuator/health 2>&1 | grep -q "200 OK"; then
+                                            echo "✅ Pre-flight check passed - app is responding"
+                                            break
+                                        fi
+                                        echo "Pre-flight attempt \$PREFLIGHT_ATTEMPT/\$MAX_PREFLIGHT_ATTEMPTS failed, retrying in 5s..."
+                                        sleep 5
+                                    done
+
+                                    if [ \$PREFLIGHT_ATTEMPT -ge \$MAX_PREFLIGHT_ATTEMPTS ]; then
+                                        echo "❌ Pre-flight check failed - app not responding at \${APP_URL}"
+                                        echo "Skipping security scan to avoid false failures"
+                                        exit 1
+                                    fi
 
                                     echo "🔐 Running ZAP baseline scan against \${APP_URL}..."
                                     mkdir -p /zap/wrk/reports
