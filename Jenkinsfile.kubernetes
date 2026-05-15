@@ -490,8 +490,8 @@ EOF
                         // Ingress URLs for browser access
                         def ingressHost = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev.local' : 'fitness-tracker-test.local'
                         def ingressPort = env.BRANCH_NAME == 'develop' ? '8081' : '8082'
-                        def ingressUrl = "http://${ingressHost}"
-                        def ingressUrlWithPort = "http://localhost:${ingressPort}"
+                        def ingressUrl = "http://${ingressHost}:${ingressPort}"
+                        def ingressUrlLocalhost = "http://localhost:${ingressPort}"
 
                         env.APP_URL = appUrl
                         env.LOCAL_PORT = localPort
@@ -500,7 +500,7 @@ EOF
                         env.INGRESS_HOST = ingressHost
                         env.INGRESS_PORT = ingressPort
                         env.INGRESS_URL = ingressUrl
-                        env.INGRESS_URL_WITH_PORT = ingressUrlWithPort
+                        env.INGRESS_URL_LOCALHOST = ingressUrlLocalhost
 
                         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                         echo "📍 Deployment Information"
@@ -512,18 +512,17 @@ EOF
                         echo "🧪 Test Access (internal):"
                         echo "  URL: ${appUrl}"
                         echo ""
-                        echo "🌐 Browser Access (external):"
-                        echo "  Ingress Host: ${ingressHost}"
+                        echo "🌐 Browser Access:"
                         echo "  Ingress URL: ${ingressUrl}"
+                        echo "  Or via localhost: ${ingressUrlLocalhost}"
                         echo ""
-                        echo "💡 To access from your browser:"
-                        echo "  Option 1 - Port-forward (Recommended):"
-                        echo "    kubectl --context=${targetContext} -n ${appNamespace} port-forward svc/fitness-tracker ${ingressPort}:8080"
-                        echo "    Then visit: ${ingressUrlWithPort}"
+                        echo "💡 Setup /etc/hosts (one-time):"
+                        echo "  Add to /etc/hosts: 127.0.0.1 ${ingressHost}"
                         echo ""
-                        echo "  Option 2 - Add hosts entry:"
-                        echo "    Add to /etc/hosts: <cluster-ip> ${ingressHost}"
-                        echo "    Then visit: ${ingressUrl}"
+                        echo "🔗 Access URLs:"
+                        echo "  Health: ${ingressUrl}/actuator/health"
+                        echo "  Info:   ${ingressUrl}/actuator/info"
+                        echo "  Metrics: ${ingressUrl}/actuator/metrics"
                         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
                         sh """
@@ -1694,12 +1693,12 @@ EOF
             echo "📊 Artifacts: ${BUILD_URL}artifact/"
             echo "📈 Reports: ${BUILD_URL}"
             echo ""
-            echo "🌐 Access Your Application:"
-            echo "  Ingress: ${env.INGRESS_URL}"
+            echo "🌐 Access Your Application in Chrome:"
+            echo "  ${env.INGRESS_URL}/actuator/health"
+            echo "  ${env.INGRESS_URL}/actuator/info"
             echo ""
-            echo "  From your Mac, run:"
-            echo "  kubectl --context=${env.TARGET_CONTEXT} -n ${env.APP_NAMESPACE} port-forward svc/fitness-tracker ${env.INGRESS_PORT}:8080"
-            echo "  Then visit: ${env.INGRESS_URL_WITH_PORT}"
+            echo "💡 Or via localhost:"
+            echo "  ${env.INGRESS_URL_LOCALHOST}/actuator/health"
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         }
         failure {
