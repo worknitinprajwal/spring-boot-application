@@ -811,12 +811,13 @@ HTMLEOF
                                         exit 1
                                     fi
 
-                                    echo "Running JMeter load test against \${APP_URL}..."
+                                    # Use HEALTH_CHECK_URL for JMeter (NodePort URL that works from pods)
+                                    echo "Running JMeter load test against \${HEALTH_CHECK_URL}..."
                                     echo "Configuration: 50 threads, 30s ramp-up, 120s duration"
 
-                                    # Extract host and port from APP_URL for JMeter
-                                    TARGET_HOST=\$(echo "\${APP_URL}" | sed -E 's|https?://([^:/]+).*|\\1|')
-                                    TARGET_PORT=\$(echo "\${APP_URL}" | sed -E 's|https?://[^:]+:([0-9]+).*|\\1|')
+                                    # Extract host and port from HEALTH_CHECK_URL for JMeter
+                                    TARGET_HOST=\$(echo "\${HEALTH_CHECK_URL}" | sed -E 's|https?://([^:/]+).*|\\1|')
+                                    TARGET_PORT=\$(echo "\${HEALTH_CHECK_URL}" | sed -E 's|https?://[^:]+:([0-9]+).*|\\1|')
 
                                     # If port extraction didn't work (no port in URL), use default 80
                                     if [ "\${TARGET_PORT}" = "\${APP_URL}" ]; then
@@ -1021,7 +1022,7 @@ AWKEOF
                                         # Add to build info
                                         echo "=== JMeter Performance Testing ===" >> \${ARTIFACTS_DIR}/build-info.txt
                                         echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
-                                        echo "Target URL: \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
+                                        echo "Target URL: \${HEALTH_CHECK_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
                                         echo "Load: 50 threads, 30s ramp-up, 120s duration" >> \${ARTIFACTS_DIR}/build-info.txt
                                         echo "Success Rate: \${SUCCESS_RATE}%" >> \${ARTIFACTS_DIR}/build-info.txt
                                         echo "Avg Response Time: \${AVG_TIME}ms" >> \${ARTIFACTS_DIR}/build-info.txt
@@ -1071,7 +1072,8 @@ AWKEOF
                                 sh script: """
                                     set +e  # Don't fail immediately on ZAP errors (it returns non-zero on findings)
 
-                                    echo "🔐 Running ZAP baseline scan against \${APP_URL}..."
+                                    # Use HEALTH_CHECK_URL for ZAP (NodePort URL that works from pods)
+                                    echo "🔐 Running ZAP baseline scan against \${HEALTH_CHECK_URL}..."
 
                                     # ZAP working directory is /zap, NOT /zap/wrk
                                     # Use relative paths from /zap or absolute paths will be doubled
@@ -1081,7 +1083,7 @@ AWKEOF
                                     # Run ZAP baseline scan and capture output
                                     ZAP_EXIT_CODE=0
                                     zap-baseline.py \\
-                                        -t \${APP_URL}/actuator/health \\
+                                        -t \${HEALTH_CHECK_URL}/actuator/health \\
                                         -g baseline-config.conf \\
                                         2>&1 | tee reports/scan-output.txt || ZAP_EXIT_CODE=\$?
 
@@ -1102,7 +1104,7 @@ SECURITY SCAN RESULTS
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Scan Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)
-Target: \${APP_URL}
+Target: \${HEALTH_CHECK_URL}
 
 Alert Summary:
   🔴 FAIL (High/Medium): \${FAIL_COUNT}
