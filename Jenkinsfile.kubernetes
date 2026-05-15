@@ -31,6 +31,9 @@ spec:
     volumeMounts:
     - name: maven-cache
       mountPath: /root/.m2
+    - name: kubeconfig
+      mountPath: /root/.kube
+      readOnly: true
   - name: kaniko
     image: gcr.io/kaniko-project/executor:debug
     command:
@@ -46,6 +49,9 @@ spec:
     emptyDir: {}
   - name: docker-config
     emptyDir: {}
+  - name: kubeconfig
+    secret:
+      secretName: cross-cluster-kubeconfig
 """
         }
     }
@@ -687,6 +693,9 @@ EOF
 
                         echo "⏳ Waiting for deployment with correct image..."
                         sh """
+                            # Export kubeconfig (mounted as secret)
+                            export KUBECONFIG=/root/.kube/config
+
                             # Determine target cluster context and namespace
                             TARGET_CONTEXT="${env.BRANCH_NAME == 'develop' ? 'kind-kind-dev' : 'kind-kind-test'}"
                             TARGET_NAMESPACE="${appNamespace}"
@@ -703,7 +712,7 @@ EOF
                                 ATTEMPT=\$((ATTEMPT + 1))
                                 echo "[\$ATTEMPT/\$MAX_ATTEMPTS] Checking deployment..."
 
-                                # Get actual running image from pods
+                                # Get actual running image from pods (cross-cluster via kubeconfig)
                                 RUNNING_IMAGE=\$(kubectl --context=\$TARGET_CONTEXT -n \$TARGET_NAMESPACE get pods -l app=fitness-tracker -o jsonpath='{.items[0].spec.containers[0].image}' 2>/dev/null || echo "")
 
                                 echo "  Running Image: \$RUNNING_IMAGE"
