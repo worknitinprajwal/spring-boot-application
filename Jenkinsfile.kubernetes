@@ -840,7 +840,7 @@ HTMLEOF
 
                 stage('Performance Testing - JMeter') {
                     steps {
-                        container('jmeter') {
+                        container('maven') {
                             echo "⚡ Running comprehensive JMeter performance tests..."
                             script {
                                 sh script: """
@@ -869,6 +869,17 @@ HTMLEOF
                                         echo "❌ Pre-flight check failed - app not responding at \${APP_URL}"
                                         echo "Skipping performance test to avoid false failures"
                                         exit 1
+                                    fi
+
+                                    # Install JMeter if not available
+                                    if ! command -v jmeter &> /dev/null; then
+                                        echo "📥 Installing JMeter..."
+                                        cd /tmp
+                                        wget -q https://archive.apache.org/dist/jmeter/binaries/apache-jmeter-5.5.tgz
+                                        tar -xzf apache-jmeter-5.5.tgz
+                                        export PATH=\$PATH:/tmp/apache-jmeter-5.5/bin
+                                        cd -
+                                        echo "✅ JMeter installed"
                                     fi
 
                                     echo "Running JMeter load test against \${APP_URL}..."
@@ -1070,7 +1081,7 @@ AWKEOF
 
                 stage('Security Testing - OWASP ZAP') {
                     steps {
-                        container('zap') {
+                        container('maven') {
                             echo "🔐 Running comprehensive OWASP ZAP security scan..."
                             script {
                                 sh script: """
@@ -1082,7 +1093,7 @@ AWKEOF
                                     PREFLIGHT_ATTEMPT=0
                                     while [ \$PREFLIGHT_ATTEMPT -lt \$MAX_PREFLIGHT_ATTEMPTS ]; do
                                         PREFLIGHT_ATTEMPT=\$((PREFLIGHT_ATTEMPT + 1))
-                                        if wget --spider --timeout=10 --tries=1 \${APP_URL}/actuator/health 2>&1 | grep -q "200 OK"; then
+                                        if curl -s -f --connect-timeout 5 --max-time 10 \${APP_URL}/actuator/health > /dev/null 2>&1; then
                                             echo "✅ Pre-flight check passed - app is responding"
                                             break
                                         fi
@@ -1096,23 +1107,34 @@ AWKEOF
                                         exit 1
                                     fi
 
+                                    # Install ZAP if not available
+                                    if ! command -v zap-baseline.py &> /dev/null; then
+                                        echo "📥 Installing OWASP ZAP..."
+                                        # Install Python3 and pip if not available
+                                        apt-get update -qq && apt-get install -y -qq python3 python3-pip wget openjdk-11-jre-headless || true
+
+                                        # Download and install ZAP
+                                        cd /tmp
+                                        wget -q https://github.com/zaproxy/zaproxy/releases/download/v2.14.0/ZAP_2.14.0_Linux.tar.gz
+                                        tar -xzf ZAP_2.14.0_Linux.tar.gz
+                                        export PATH=\$PATH:/tmp/ZAP_2.14.0
+                                        cd -
+                                        echo "✅ ZAP installed"
+                                    fi
+
                                     echo "🔐 Running ZAP baseline scan against \${APP_URL}..."
-                                    mkdir -p /zap/wrk/reports
+                                    mkdir -p \${ARTIFACTS_DIR}/zap-reports
 
                                     # Run ZAP baseline scan
                                     ZAP_EXIT_CODE=0
                                     zap-baseline.py \\
                                         -t \${APP_URL} \\
-                                        -r /zap/wrk/reports/baseline-report.html \\
-                                        -w /zap/wrk/reports/baseline-report.md \\
-                                        -x /zap/wrk/reports/baseline-report.xml \\
-                                        -J /zap/wrk/reports/baseline-report.json || ZAP_EXIT_CODE=\$?
+                                        -r \${ARTIFACTS_DIR}/zap-reports/baseline-report.html \\
+                                        -w \${ARTIFACTS_DIR}/zap-reports/baseline-report.md \\
+                                        -x \${ARTIFACTS_DIR}/zap-reports/baseline-report.xml \\
+                                        -J \${ARTIFACTS_DIR}/zap-reports/baseline-report.json || ZAP_EXIT_CODE=\$?
 
                                     echo "ZAP scan completed with exit code: \${ZAP_EXIT_CODE}"
-
-                                    # Copy reports to artifacts directory
-                                    mkdir -p \${ARTIFACTS_DIR}/zap-reports
-                                    cp -r /zap/wrk/reports/* \${ARTIFACTS_DIR}/zap-reports/ 2>/dev/null || true
 
                                     # Install jq if not available (needed for JSON parsing)
                                     if ! command -v jq &> /dev/null; then
