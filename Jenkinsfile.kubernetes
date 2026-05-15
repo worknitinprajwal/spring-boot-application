@@ -293,8 +293,7 @@ spec:
         </table>
     </div>
 
-    <script id="aikido-data" type="application/json">
-    </script>
+    <script id="aikido-data" type="application/json">AIKIDO_JSON_PLACEHOLDER</script>
     <script>
         // Parse JSON data from the script tag above
         const scanData = JSON.parse(document.getElementById('aikido-data').textContent || '{}');
@@ -363,9 +362,8 @@ HTMLEOF
                                             ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp
                                         mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
 
-                                        # Inject JSON data into the script tag (MUCH safer than sed replacement)
-                                        # Find the aikido-data script tag and insert JSON between the tags
-                                        awk '/<script id="aikido-data"/ {print; getline; print; while ((getline line < "'${ARTIFACTS_DIR}'/aikido-scan-details.json") > 0) print "    " line; next} 1' \
+                                        # Inject JSON - use Perl for safe multi-line replacement (standard in Jenkins)
+                                        perl -pe 'BEGIN{undef $/;} s/AIKIDO_JSON_PLACEHOLDER/`cat ${ARTIFACTS_DIR}\/aikido-scan-details.json`/se' \
                                             ${ARTIFACTS_DIR}/aikido-report.html > ${ARTIFACTS_DIR}/aikido-report.tmp
                                         mv ${ARTIFACTS_DIR}/aikido-report.tmp ${ARTIFACTS_DIR}/aikido-report.html
 
