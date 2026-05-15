@@ -1101,9 +1101,12 @@ SUMMARYEOF
                                     fi
                                     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> reports/metrics-summary.txt
 
-                                    # Copy reports to artifacts directory (already done above)
+                                    # Copy reports to artifacts directory
+                                    mkdir -p \${ARTIFACTS_DIR}/zap-reports
+                                    cp -r reports/* \${ARTIFACTS_DIR}/zap-reports/ 2>/dev/null || true
+
                                     # Display the metrics summary
-                                    cat \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                    cat reports/metrics-summary.txt
 
                                     # Fail the build if critical issues found
                                     if [ "\${SECURITY_PASS}" = "false" ]; then
