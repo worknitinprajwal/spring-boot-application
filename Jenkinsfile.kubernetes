@@ -613,15 +613,16 @@ EOF
                     script {
                         def argoApp = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev' : 'fitness-tracker-test'
                         def appNamespace = env.BRANCH_NAME == 'develop' ? 'dev' : 'test'
+                        // Cross-cluster access: Jenkins (kind-igs) → app clusters via NodePort
                         def appUrl = env.BRANCH_NAME == 'develop' ?
-                            'http://fitness-tracker.dev.svc.cluster.local:8080' :
-                            'http://fitness-tracker.test.svc.cluster.local:8080'
+                            'http://172.18.0.5:30830' :
+                            'http://172.18.0.7:31397'
 
                         env.APP_URL = appUrl
 
                         echo "📍 ArgoCD App: ${argoApp}"
                         echo "📍 Namespace: ${appNamespace}"
-                        echo "📍 Service URL: ${appUrl}"
+                        echo "📍 App URL (NodePort): ${appUrl}"
 
                         echo "⏳ Waiting for deployment to be ready..."
                         sh """
