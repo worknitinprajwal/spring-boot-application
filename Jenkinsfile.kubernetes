@@ -897,6 +897,12 @@ AWKEOF
 
                                         awk -f /tmp/jmeter-analyze.awk \${ARTIFACTS_DIR}/jmeter-reports/results.jtl | tee \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
 
+                                        # Install bc for math calculations if not available
+                                        if ! command -v bc &> /dev/null; then
+                                            echo "📥 Installing bc for SLA validation..."
+                                            apk add --no-cache bc 2>/dev/null || echo "Warning: bc not available in this container"
+                                        fi
+
                                         # Parse metrics and enforce SLAs
                                         SUCCESS_RATE=\$(grep "METRIC:success_rate=" \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt | cut -d'=' -f2)
                                         AVG_TIME=\$(grep "METRIC:avg_response_time=" \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt | cut -d'=' -f2)
