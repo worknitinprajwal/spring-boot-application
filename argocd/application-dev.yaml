@@ -19,7 +19,7 @@ spec:
         - ../overlays/dev/values-dev.yaml
 
   destination:
-    server: https://172.18.0.2:6443  # dev-cluster
+    server: https://172.18.0.5:6443  # dev-cluster (updated after cluster recreation)
     namespace: dev
 
   syncPolicy:
