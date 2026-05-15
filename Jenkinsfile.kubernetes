@@ -948,6 +948,9 @@ END {
 }
 AWKEOF
 
+                                        # Run AWK script for response time metrics first
+                                        awk -f /tmp/jmeter-analyze.awk \${ARTIFACTS_DIR}/jmeter-reports/results.jtl > \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
+
                                         # Use grep to accurately count success/failure (handles CSV with quotes properly)
                                         echo "🔍 Counting success/failure with grep (CSV-safe)..."
                                         TRUE_SUCCESS=\$(grep -c ',true,' \${ARTIFACTS_DIR}/jmeter-reports/results.jtl || echo 0)
@@ -963,16 +966,7 @@ AWKEOF
                                             echo "   Failure: \$TRUE_FAILURE"
                                             echo ""
 
-                                            # Override AWK metrics with accurate grep-based counts
-                                            sed -i.bak "s/METRIC:success_rate=.*/METRIC:success_rate=\${ACCURATE_SUCCESS_RATE}/" \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-                                            sed -i.bak "s/METRIC:failed_count=.*/METRIC:failed_count=\${TRUE_FAILURE}/" \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-                                        fi
-
-                                        # Run AWK script for response time metrics (ignore success/failure from AWK)
-                                        awk -f /tmp/jmeter-analyze.awk \${ARTIFACTS_DIR}/jmeter-reports/results.jtl | tee \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-
-                                        # Append accurate counts
-                                        if [ \$TOTAL -gt 0 ]; then
+                                            # Append accurate counts to report
                                             echo "" >> \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
                                             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
                                             echo "ACCURATE COUNT (grep-based, CSV-safe):" >> \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
@@ -983,6 +977,9 @@ AWKEOF
                                             echo "METRIC:success_rate=\${ACCURATE_SUCCESS_RATE}" >> \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
                                             echo "METRIC:failed_count=\${TRUE_FAILURE}" >> \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
                                         fi
+
+                                        # Display the summary
+                                        cat \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
 
                                         # Install bc for math calculations if not available
                                         if ! command -v bc &> /dev/null; then
