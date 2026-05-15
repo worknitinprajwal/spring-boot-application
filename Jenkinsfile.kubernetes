@@ -295,12 +295,29 @@ spec:
 
     <script id="aikido-data" type="application/json">AIKIDO_JSON_PLACEHOLDER</script>
     <script>
-        // Parse JSON data from the script tag above
-        const scanData = JSON.parse(document.getElementById('aikido-data').textContent || '{}');
+        // Parse JSON data from the script tag above with error handling
+        let scanData = {};
+        try {
+            const jsonElement = document.getElementById('aikido-data');
+            const jsonText = jsonElement ? jsonElement.textContent : '';
+            console.log('DEBUG: Raw JSON text length:', jsonText.length);
+            console.log('DEBUG: First 200 chars of JSON:', jsonText.substring(0, 200));
+
+            if (jsonText && jsonText !== 'AIKIDO_JSON_PLACEHOLDER') {
+                scanData = JSON.parse(jsonText);
+                console.log('DEBUG: Successfully parsed JSON:', scanData);
+            } else {
+                console.error('DEBUG: JSON placeholder not replaced or empty!');
+            }
+        } catch (e) {
+            console.error('DEBUG: JSON parse error:', e);
+            console.error('DEBUG: Failed JSON text:', document.getElementById('aikido-data').textContent);
+        }
 
         // Extract severity counts from the message
         if (scanData && scanData.outcome && scanData.outcome.short_human_readable_message) {
             const msg = scanData.outcome.short_human_readable_message;
+            console.log('DEBUG: Processing message:', msg);
 
             // Extract counts using regex (use [0-9] and spaces to avoid backslash issues)
             const criticalMatch = msg.match(/([0-9]+) +new +CRITICAL/i);
@@ -308,8 +325,11 @@ spec:
             const mediumMatch = msg.match(/([0-9]+) +new +MEDIUM/i);
             const lowMatch = msg.match(/([0-9]+) +new +LOW/i);
 
+            console.log('DEBUG: Regex matches:', { criticalMatch, highMatch, mediumMatch, lowMatch });
+
             // Update the count elements
             const counts = document.querySelectorAll('.count');
+            console.log('DEBUG: Found', counts.length, 'count elements');
             if (criticalMatch && counts[0]) counts[0].textContent = criticalMatch[1];
             if (highMatch && counts[1]) counts[1].textContent = highMatch[1];
             if (mediumMatch && counts[2]) counts[2].textContent = mediumMatch[1];
@@ -321,11 +341,14 @@ spec:
                 gateDiv.className = 'gate-status gate-failed';
                 gateDiv.textContent = msg;
             }
+        } else {
+            console.error('DEBUG: Missing outcome data in scanData:', scanData);
         }
 
         // Populate issues table
         const issuesBody = document.getElementById('issues-body');
         if (scanData && scanData.issues) {
+            console.log('DEBUG: Processing', scanData.issues.length, 'issues');
             scanData.issues.forEach(issue => {
                 const row = document.createElement('tr');
                 const severity = issue.severity || 'unknown';
@@ -335,6 +358,8 @@ spec:
                     '<td>' + (issue.component || issue.package || 'N/A') + '</td>';
                 issuesBody.appendChild(row);
             });
+        } else {
+            console.log('DEBUG: No issues array found in scanData');
         }
     </script>
 </body>
