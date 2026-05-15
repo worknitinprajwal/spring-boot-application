@@ -457,35 +457,35 @@ EOF
                     script {
                         def argoApp = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev' : 'fitness-tracker-test'
                         def appNamespace = env.BRANCH_NAME == 'develop' ? 'dev' : 'test'
+                        def targetContext = env.BRANCH_NAME == 'develop' ? 'kind-kind-dev' : 'kind-kind-test'
 
-                        // Use internal Kubernetes service DNS for in-cluster access
-                        // Format: <service-name>.<namespace>.svc.cluster.local:<port>
-                        def appUrl = env.BRANCH_NAME == 'develop' ?
-                            'http://fitness-tracker.dev.svc.cluster.local:8080' :
-                            'http://fitness-tracker.test.svc.cluster.local:8080'
-
-                        // External NodePort URLs for reference (for external access)
-                        def externalUrl = env.BRANCH_NAME == 'develop' ?
-                            'http://172.18.0.5:30830' :
-                            'http://172.18.0.7:31397'
+                        // Use localhost with port-forward for cross-cluster access
+                        // Jenkins runs in kind-igs, apps in kind-kind-dev/kind-kind-test clusters
+                        def localPort = env.BRANCH_NAME == 'develop' ? '8091' : '8092'
+                        def appUrl = "http://localhost:${localPort}"
 
                         env.APP_URL = appUrl
-                        env.EXTERNAL_URL = externalUrl
+                        env.LOCAL_PORT = localPort
+                        env.TARGET_CONTEXT = targetContext
+                        env.APP_NAMESPACE = appNamespace
 
                         echo "📍 ArgoCD App: ${argoApp}"
                         echo "📍 Namespace: ${appNamespace}"
-                        echo "📍 Internal Service URL: ${appUrl}"
-                        echo "📍 External NodePort URL: ${externalUrl}"
+                        echo "📍 Target Cluster: ${targetContext}"
+                        echo "📍 Local Port: ${localPort}"
+                        echo "📍 Test URL: ${appUrl}"
 
                         sh """
                             export KUBECONFIG=/root/.kube/config
 
-                            TARGET_CONTEXT="${env.BRANCH_NAME == 'develop' ? 'kind-kind-dev' : 'kind-kind-test'}"
+                            TARGET_CONTEXT="${targetContext}"
                             TARGET_NAMESPACE="${appNamespace}"
                             EXPECTED_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
+                            LOCAL_PORT="${localPort}"
 
                             echo "Expected Image: \$EXPECTED_IMAGE"
                             echo "Target: \$TARGET_CONTEXT / \$TARGET_NAMESPACE"
+                            echo "Local Port: \$LOCAL_PORT"
 
                             MAX_ATTEMPTS=40
                             ATTEMPT=0
@@ -503,22 +503,40 @@ EOF
 
                                 # First check if correct image is deployed
                                 if [ "\$RUNNING_IMAGE" = "\$EXPECTED_IMAGE" ] && [ "\$POD_STATUS" = "Running" ]; then
-                                    # Wait a bit for the app to fully start
-                                    echo "  Correct image deployed, waiting for app to be ready..."
-                                    sleep 5
+                                    echo "  ✅ Correct image deployed and pod is running!"
 
-                                    # Check health endpoint with retries
+                                    # Set up port-forward to remote cluster for testing
+                                    echo "  🔗 Setting up kubectl port-forward to \$TARGET_CONTEXT..."
+                                    kubectl --context=\$TARGET_CONTEXT -n \$TARGET_NAMESPACE port-forward svc/fitness-tracker \$LOCAL_PORT:8080 > /tmp/port-forward.log 2>&1 &
+                                    PORT_FORWARD_PID=\$!
+                                    echo "  Port-forward started with PID: \$PORT_FORWARD_PID"
+
+                                    # Wait for port-forward to establish
+                                    sleep 3
+
+                                    # Verify port-forward is still running
+                                    if ! kill -0 \$PORT_FORWARD_PID 2>/dev/null; then
+                                        echo "  ⚠️ Port-forward failed to start, logs:"
+                                        cat /tmp/port-forward.log || true
+                                        echo "  Retrying in next attempt..."
+                                        sleep 5
+                                        continue
+                                    fi
+
+                                    # Check health endpoint via port-forward with retries
                                     HEALTH_ATTEMPTS=0
                                     while [ \$HEALTH_ATTEMPTS -lt 5 ]; do
                                         HEALTH_ATTEMPTS=\$((HEALTH_ATTEMPTS + 1))
 
-                                        if curl -s -f --connect-timeout 5 --max-time 10 ${appUrl}/actuator/health > /dev/null 2>&1; then
-                                            echo "✅ Correct image deployed and app is healthy!"
-
-                                            # Additional verification - check response content
-                                            HEALTH_RESPONSE=\$(curl -s --connect-timeout 5 --max-time 10 ${appUrl}/actuator/health)
+                                        if curl -s -f --connect-timeout 5 --max-time 10 http://localhost:\$LOCAL_PORT/actuator/health > /dev/null 2>&1; then
+                                            HEALTH_RESPONSE=\$(curl -s --connect-timeout 5 --max-time 10 http://localhost:\$LOCAL_PORT/actuator/health)
                                             if echo "\$HEALTH_RESPONSE" | grep -q '"status":"UP"'; then
-                                                echo "✅ Health check passed with UP status"
+                                                echo ""
+                                                echo "  ✅ Health check passed with UP status!"
+                                                echo "  ✅ Port-forward active (PID \$PORT_FORWARD_PID)"
+                                                echo ""
+                                                echo "✅ Deployment verified successfully!"
+                                                echo "📝 Tests will use: http://localhost:\$LOCAL_PORT"
                                                 exit 0
                                             fi
                                         fi
@@ -527,7 +545,9 @@ EOF
                                         sleep 3
                                     done
 
-                                    echo "  Image correct but app not responding to health checks yet..."
+                                    echo "  ⚠️ Health checks failed, killing port-forward and retrying..."
+                                    kill \$PORT_FORWARD_PID 2>/dev/null || true
+                                    sleep 5
                                 else
                                     if [ -z "\$RUNNING_IMAGE" ]; then
                                         echo "  No pod found yet, waiting for deployment..."
@@ -738,8 +758,7 @@ EOF
                                     # Add to build info
                                     echo "=== REST API Functional Testing ===" >> \${ARTIFACTS_DIR}/build-info.txt
                                     echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Internal URL: \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
-                                    echo "External URL: \${EXTERNAL_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
+                                    echo "Test URL (port-forward): \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
                                     echo "Tests Passed: \${TESTS_PASSED}" >> \${ARTIFACTS_DIR}/build-info.txt
                                     echo "Tests Failed: \${TESTS_FAILED}" >> \${ARTIFACTS_DIR}/build-info.txt
 
