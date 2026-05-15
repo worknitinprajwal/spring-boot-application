@@ -524,12 +524,12 @@ EOF
                     sh """
                         # Create all test report directories in maven container
                         # This ensures they're owned by the correct user
-                        mkdir -p ${ARTIFACTS_DIR}/soapui-reports
+                        mkdir -p ${ARTIFACTS_DIR}/api-tests
                         mkdir -p ${ARTIFACTS_DIR}/jmeter-reports
                         mkdir -p ${ARTIFACTS_DIR}/zap-reports
 
                         # Make them world-writable so other containers can write
-                        chmod -R 777 ${ARTIFACTS_DIR}/soapui-reports
+                        chmod -R 777 ${ARTIFACTS_DIR}/api-tests
                         chmod -R 777 ${ARTIFACTS_DIR}/jmeter-reports
                         chmod -R 777 ${ARTIFACTS_DIR}/zap-reports
 
@@ -546,99 +546,364 @@ EOF
                 }
             }
             parallel {
-                stage('API Testing - SoapUI') {
+                stage('API Testing - REST Functional Tests') {
                     steps {
                         container('maven') {
-                            echo "🧪 Running SoapUI API tests via Maven..."
+                            echo "🧪 Running comprehensive REST API functional tests..."
                             script {
                                 sh script: """
-                                    # Use SoapUI Maven plugin - most reliable in CI
-                                    if [ -f "pom.xml" ]; then
-                                        echo "Running SoapUI tests against \${APP_URL}..."
-                                        mvn com.smartbear.soapui:soapui-maven-plugin:test \
-                                            -DprojectFile=tests/soapui/fitness-tracker-api-tests.xml \
-                                            -Dendpoint=\${APP_URL} \
-                                            -DoutputFolder=\${ARTIFACTS_DIR}/soapui-reports \
-                                            -Dmaven.repo.local=/root/.m2/repository || echo "⚠️ SoapUI tests failed (non-blocking)"
+                                    set -e  # Fail on any error
+
+                                    mkdir -p \${ARTIFACTS_DIR}/api-tests
+
+                                    echo "=== REST API Functional Testing ===" | tee \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                    echo "Target: \${APP_URL}" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                    echo "Timestamp: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                    echo "" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+
+                                    TESTS_PASSED=0
+                                    TESTS_FAILED=0
+
+                                    # Test 1: Health Endpoint - Full validation
+                                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                    echo "TEST 1: Health Endpoint (/actuator/health)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+
+                                    # Measure response time and capture response
+                                    START_TIME=\$(date +%s%3N)
+                                    HTTP_CODE=\$(curl -s -o \${ARTIFACTS_DIR}/api-tests/health-response.json -w "%{http_code}" \\
+                                        -H "Accept: application/json" \\
+                                        --connect-timeout 5 \\
+                                        --max-time 10 \\
+                                        \${APP_URL}/actuator/health)
+                                    END_TIME=\$(date +%s%3N)
+                                    LATENCY=\$((END_TIME - START_TIME))
+
+                                    echo "  Response Code: \${HTTP_CODE}" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                    echo "  Latency: \${LATENCY}ms" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+
+                                    if [ "\${HTTP_CODE}" = "200" ]; then
+                                        echo "  ✅ HTTP Status: PASS" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                        TESTS_PASSED=\$((TESTS_PASSED + 1))
                                     else
-                                        echo "⚠️ No SoapUI project found, creating placeholder..."
-                                        echo "SoapUI test project not configured yet" > \${ARTIFACTS_DIR}/soapui-reports/summary.txt
+                                        echo "  ❌ HTTP Status: FAIL (expected 200, got \${HTTP_CODE})" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                        TESTS_FAILED=\$((TESTS_FAILED + 1))
                                     fi
 
-                                    echo "=== SoapUI API Testing ===" >> \${ARTIFACTS_DIR}/build-info.txt
+                                    # Validate response content
+                                    if grep -q '"status":"UP"' \${ARTIFACTS_DIR}/api-tests/health-response.json; then
+                                        echo "  ✅ Health Status: PASS (status=UP)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                        TESTS_PASSED=\$((TESTS_PASSED + 1))
+                                    else
+                                        echo "  ❌ Health Status: FAIL (status not UP)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                        TESTS_FAILED=\$((TESTS_FAILED + 1))
+                                    fi
+
+                                    # Validate latency SLA
+                                    if [ \${LATENCY} -lt 500 ]; then
+                                        echo "  ✅ Performance SLA: PASS (\${LATENCY}ms < 500ms)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                        TESTS_PASSED=\$((TESTS_PASSED + 1))
+                                    else
+                                        echo "  ❌ Performance SLA: FAIL (\${LATENCY}ms >= 500ms)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                        TESTS_FAILED=\$((TESTS_FAILED + 1))
+                                    fi
+
+                                    echo "" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+
+                                    # Test 2: Info Endpoint
+                                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                    echo "TEST 2: Info Endpoint (/actuator/info)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+
+                                    START_TIME=\$(date +%s%3N)
+                                    HTTP_CODE=\$(curl -s -o \${ARTIFACTS_DIR}/api-tests/info-response.json -w "%{http_code}" \\
+                                        -H "Accept: application/json" \\
+                                        --connect-timeout 5 \\
+                                        --max-time 10 \\
+                                        \${APP_URL}/actuator/info)
+                                    END_TIME=\$(date +%s%3N)
+                                    LATENCY=\$((END_TIME - START_TIME))
+
+                                    echo "  Response Code: \${HTTP_CODE}" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                    echo "  Latency: \${LATENCY}ms" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+
+                                    if [ "\${HTTP_CODE}" = "200" ]; then
+                                        echo "  ✅ HTTP Status: PASS" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                        TESTS_PASSED=\$((TESTS_PASSED + 1))
+                                    else
+                                        echo "  ❌ HTTP Status: FAIL" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                        TESTS_FAILED=\$((TESTS_FAILED + 1))
+                                    fi
+
+                                    if [ \${LATENCY} -lt 300 ]; then
+                                        echo "  ✅ Performance SLA: PASS (\${LATENCY}ms < 300ms)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                        TESTS_PASSED=\$((TESTS_PASSED + 1))
+                                    else
+                                        echo "  ❌ Performance SLA: FAIL (\${LATENCY}ms >= 300ms)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                        TESTS_FAILED=\$((TESTS_FAILED + 1))
+                                    fi
+
+                                    echo "" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+
+                                    # Test 3: Metrics Endpoint
+                                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                    echo "TEST 3: Metrics Endpoint (/actuator/metrics)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+
+                                    START_TIME=\$(date +%s%3N)
+                                    HTTP_CODE=\$(curl -s -o \${ARTIFACTS_DIR}/api-tests/metrics-response.json -w "%{http_code}" \\
+                                        -H "Accept: application/json" \\
+                                        --connect-timeout 5 \\
+                                        --max-time 10 \\
+                                        \${APP_URL}/actuator/metrics)
+                                    END_TIME=\$(date +%s%3N)
+                                    LATENCY=\$((END_TIME - START_TIME))
+
+                                    echo "  Response Code: \${HTTP_CODE}" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                    echo "  Latency: \${LATENCY}ms" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+
+                                    if [ "\${HTTP_CODE}" = "200" ]; then
+                                        echo "  ✅ HTTP Status: PASS" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                        TESTS_PASSED=\$((TESTS_PASSED + 1))
+                                    else
+                                        echo "  ❌ HTTP Status: FAIL" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                        TESTS_FAILED=\$((TESTS_FAILED + 1))
+                                    fi
+
+                                    # Validate metrics response has names array
+                                    if grep -q '"names"' \${ARTIFACTS_DIR}/api-tests/metrics-response.json; then
+                                        echo "  ✅ Response Content: PASS (contains metrics names)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                        TESTS_PASSED=\$((TESTS_PASSED + 1))
+                                    else
+                                        echo "  ❌ Response Content: FAIL (missing metrics names)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                        TESTS_FAILED=\$((TESTS_FAILED + 1))
+                                    fi
+
+                                    if [ \${LATENCY} -lt 1000 ]; then
+                                        echo "  ✅ Performance SLA: PASS (\${LATENCY}ms < 1000ms)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                        TESTS_PASSED=\$((TESTS_PASSED + 1))
+                                    else
+                                        echo "  ❌ Performance SLA: FAIL (\${LATENCY}ms >= 1000ms)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                        TESTS_FAILED=\$((TESTS_FAILED + 1))
+                                    fi
+
+                                    echo "" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                    echo "SUMMARY:" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                    echo "  Total Tests: \$((TESTS_PASSED + TESTS_FAILED))" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                    echo "  Passed: \${TESTS_PASSED}" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                    echo "  Failed: \${TESTS_FAILED}" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+                                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
+
+                                    # Add to build info
+                                    echo "=== REST API Functional Testing ===" >> \${ARTIFACTS_DIR}/build-info.txt
                                     echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
                                     echo "Target URL: \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
+                                    echo "Tests Passed: \${TESTS_PASSED}" >> \${ARTIFACTS_DIR}/build-info.txt
+                                    echo "Tests Failed: \${TESTS_FAILED}" >> \${ARTIFACTS_DIR}/build-info.txt
+
+                                    # FAIL THE BUILD if any tests failed
+                                    if [ \${TESTS_FAILED} -gt 0 ]; then
+                                        echo "❌ API tests failed! Check test-results.txt for details."
+                                        exit 1
+                                    fi
+
+                                    echo "✅ All API functional tests passed!"
                                 """, returnStdout: false
                             }
                         }
                     }
                     post {
                         always {
-                            archiveArtifacts artifacts: 'build-artifacts/soapui-reports/**/*', allowEmptyArchive: true
+                            archiveArtifacts artifacts: 'build-artifacts/api-tests/**/*', allowEmptyArchive: true
                         }
                     }
                 }
 
                 stage('Performance Testing - JMeter') {
                     steps {
-                        container('jmeter') {  // Using JMeter container!
-                            echo "⚡ Running JMeter performance tests..."
+                        container('jmeter') {
+                            echo "⚡ Running comprehensive JMeter performance tests..."
                             script {
                                 sh script: """
-                                    if [ -f "tests/jmeter/fitness-tracker-load-test.jmx" ]; then
-                                        echo "Running JMeter performance tests against \${APP_URL}..."
+                                    set -e  # Fail on any error
 
-                                        # Run JMeter with production-level configuration
-                                        jmeter -n \\
-                                            -t tests/jmeter/fitness-tracker-load-test.jmx \\
-                                            -JAPP_URL=\${APP_URL} \\
-                                            -JTHREADS=50 \\
-                                            -JRAMP_UP=30 \\
-                                            -JDURATION=120 \\
-                                            -l \${ARTIFACTS_DIR}/jmeter-reports/results.jtl \\
-                                            -j \${ARTIFACTS_DIR}/jmeter-reports/jmeter.log \\
-                                            -e -o \${ARTIFACTS_DIR}/jmeter-reports/html || echo "⚠️ JMeter tests completed with failures (non-blocking)"
+                                    if [ ! -f "tests/jmeter/fitness-tracker-load-test.jmx" ]; then
+                                        echo "❌ JMeter test plan not found!"
+                                        exit 1
+                                    fi
 
-                                        # Generate CSV summary for metrics analysis
-                                        if [ -f "\${ARTIFACTS_DIR}/jmeter-reports/results.jtl" ]; then
-                                            echo "Generating performance metrics summary..."
+                                    echo "Running JMeter load test against \${APP_URL}..."
+                                    echo "Configuration: 50 threads, 30s ramp-up, 120s duration"
 
-                                            # Use awk to analyze JMeter results
-                                            cat > /tmp/jmeter-analyze.awk << 'AWKEOF'
-BEGIN { FS="," }
+                                    # Run JMeter with production-level configuration
+                                    jmeter -n \\
+                                        -t tests/jmeter/fitness-tracker-load-test.jmx \\
+                                        -JAPP_URL=\${APP_URL} \\
+                                        -JTHREADS=50 \\
+                                        -JRAMP_UP=30 \\
+                                        -JDURATION=120 \\
+                                        -l \${ARTIFACTS_DIR}/jmeter-reports/results.jtl \\
+                                        -j \${ARTIFACTS_DIR}/jmeter-reports/jmeter.log \\
+                                        -e -o \${ARTIFACTS_DIR}/jmeter-reports/html
+
+                                    echo "✅ JMeter test execution completed"
+
+                                    # Generate comprehensive performance metrics
+                                    if [ -f "\${ARTIFACTS_DIR}/jmeter-reports/results.jtl" ]; then
+                                        echo "📊 Analyzing performance metrics..."
+
+                                        # Enhanced awk script for detailed metrics
+                                        cat > /tmp/jmeter-analyze.awk << 'AWKEOF'
+BEGIN {
+    FS=","
+    count=0
+    sum=0
+    min=999999
+    max=0
+    success=0
+    failed=0
+}
 NR>1 {
-    sum+=\$2;
-    count++;
-    if(\$2>max) max=\$2;
-    if(min=="" || \$2<min) min=\$2;
-    if(\$8=="true") success++;
-    else failed++;
+    elapsed=int(\$2)
+    latency=int(\$11)
+    connect=int(\$13)
+
+    # Response time stats
+    sum+=elapsed
+    count++
+    if(elapsed>max) max=elapsed
+    if(elapsed<min) min=elapsed
+
+    # Store values for percentile calculation (simplified)
+    times[count]=elapsed
+    latencies[count]=latency
+    connections[count]=connect
+
+    # Success/failure tracking
+    if(\$6=="true") success++
+    else {
+        failed++
+        failures[\$5]=(\$5 in failures) ? failures[\$5]+1 : 1
+    }
+
+    # Throughput calculation (bytes)
+    bytes_sent+=int(\$7)
+    bytes_received+=int(\$6)
 }
 END {
-    print "=== Performance Metrics ==="
-    print "Total Requests: " count
-    print "Successful: " success
-    print "Failed: " failed
-    print "Success Rate: " (success*100/count) "%"
-    print "Avg Response Time: " (sum/count) " ms"
-    print "Min Response Time: " min " ms"
-    print "Max Response Time: " max " ms"
+    if(count==0) {
+        print "No data to analyze"
+        exit 1
+    }
+
+    avg=sum/count
+    success_rate=(success*100/count)
+
+    # Calculate approximate percentiles (simplified for shell)
+    p50_idx=int(count*0.50)
+    p90_idx=int(count*0.90)
+    p95_idx=int(count*0.95)
+    p99_idx=int(count*0.99)
+
+    print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    print "PERFORMANCE METRICS SUMMARY"
+    print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    print ""
+    print "Request Statistics:"
+    print "  Total Requests: " count
+    print "  Successful: " success " (" success_rate "%)"
+    print "  Failed: " failed " (" (failed*100/count) "%)"
+    print ""
+    print "Response Time (ms):"
+    print "  Minimum: " min
+    print "  Maximum: " max
+    print "  Average: " sprintf("%.2f", avg)
+    print "  ~50th Percentile: " times[p50_idx]
+    print "  ~90th Percentile: " times[p90_idx]
+    print "  ~95th Percentile: " times[p95_idx]
+    print "  ~99th Percentile: " times[p99_idx]
+    print ""
+    print "Throughput:"
+    print "  Requests/sec: " sprintf("%.2f", count/120)
+    print "  Data Sent: " sprintf("%.2f KB", bytes_sent/1024)
+    print "  Data Received: " sprintf("%.2f KB", bytes_received/1024)
+    print ""
+    if(failed>0) {
+        print "Error Analysis:"
+        for(code in failures) {
+            print "  HTTP " code ": " failures[code] " failures"
+        }
+        print ""
+    }
+    print "Health Assessment:"
+    if(success_rate >= 99.9) print "  ✅ EXCELLENT - 99.9%+ success rate"
+    else if(success_rate >= 99) print "  ✅ GOOD - 99%+ success rate"
+    else if(success_rate >= 95) print "  ⚠️  WARNING - Below 99% success rate"
+    else print "  ❌ CRITICAL - Below 95% success rate"
+
+    if(avg < 500) print "  ✅ EXCELLENT - Avg latency < 500ms"
+    else if(avg < 1000) print "  ⚠️  WARNING - Avg latency > 500ms"
+    else print "  ❌ CRITICAL - Avg latency > 1000ms"
+
+    print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    # Export metrics for parsing
+    print "METRIC:success_rate=" success_rate
+    print "METRIC:avg_response_time=" avg
+    print "METRIC:max_response_time=" max
+    print "METRIC:failed_count=" failed
 }
 AWKEOF
 
-                                            awk -f /tmp/jmeter-analyze.awk \${ARTIFACTS_DIR}/jmeter-reports/results.jtl > \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-                                            cat \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-                                        fi
-                                    else
-                                        echo "⚠️ No JMeter test plan found at tests/jmeter/fitness-tracker-load-test.jmx"
-                                        mkdir -p \${ARTIFACTS_DIR}/jmeter-reports
-                                        echo "JMeter test plan not found" > \${ARTIFACTS_DIR}/jmeter-reports/summary.txt
-                                    fi
+                                        awk -f /tmp/jmeter-analyze.awk \${ARTIFACTS_DIR}/jmeter-reports/results.jtl | tee \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
 
-                                    echo "=== JMeter Performance Testing ===" >> \${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Target URL: \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Load Configuration: 50 threads, 30s ramp-up, 120s duration" >> \${ARTIFACTS_DIR}/build-info.txt
+                                        # Parse metrics and enforce SLAs
+                                        SUCCESS_RATE=\$(grep "METRIC:success_rate=" \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt | cut -d'=' -f2)
+                                        AVG_TIME=\$(grep "METRIC:avg_response_time=" \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt | cut -d'=' -f2)
+                                        FAILED_COUNT=\$(grep "METRIC:failed_count=" \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt | cut -d'=' -f2)
+
+                                        echo "" | tee -a \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
+                                        echo "SLA Validation:" | tee -a \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
+
+                                        SLA_PASSED=true
+
+                                        # SLA 1: Success rate must be >= 95%
+                                        if [ "\$(echo "\${SUCCESS_RATE} >= 95" | bc)" = "1" ]; then
+                                            echo "  ✅ SLA PASS: Success rate \${SUCCESS_RATE}% >= 95%" | tee -a \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
+                                        else
+                                            echo "  ❌ SLA FAIL: Success rate \${SUCCESS_RATE}% < 95%" | tee -a \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
+                                            SLA_PASSED=false
+                                        fi
+
+                                        # SLA 2: Average response time must be < 1000ms
+                                        if [ "\$(echo "\${AVG_TIME} < 1000" | bc)" = "1" ]; then
+                                            echo "  ✅ SLA PASS: Avg response time \${AVG_TIME}ms < 1000ms" | tee -a \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
+                                        else
+                                            echo "  ❌ SLA FAIL: Avg response time \${AVG_TIME}ms >= 1000ms" | tee -a \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
+                                            SLA_PASSED=false
+                                        fi
+
+                                        # Add to build info
+                                        echo "=== JMeter Performance Testing ===" >> \${ARTIFACTS_DIR}/build-info.txt
+                                        echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
+                                        echo "Target URL: \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
+                                        echo "Load: 50 threads, 30s ramp-up, 120s duration" >> \${ARTIFACTS_DIR}/build-info.txt
+                                        echo "Success Rate: \${SUCCESS_RATE}%" >> \${ARTIFACTS_DIR}/build-info.txt
+                                        echo "Avg Response Time: \${AVG_TIME}ms" >> \${ARTIFACTS_DIR}/build-info.txt
+                                        echo "Failed Requests: \${FAILED_COUNT}" >> \${ARTIFACTS_DIR}/build-info.txt
+
+                                        # FAIL THE BUILD if SLAs not met
+                                        if [ "\${SLA_PASSED}" = "false" ]; then
+                                            echo "❌ Performance SLAs not met! See metrics-summary.txt for details."
+                                            exit 1
+                                        fi
+
+                                        echo "✅ All performance SLAs met!"
+                                    else
+                                        echo "❌ No results file generated!"
+                                        exit 1
+                                    fi
                                 """, returnStdout: false
                             }
                         }
@@ -660,41 +925,111 @@ AWKEOF
 
                 stage('Security Testing - OWASP ZAP') {
                     steps {
-                        container('zap') {  // Using ZAP container!
-                            echo "🔐 Running OWASP ZAP security scan..."
+                        container('zap') {
+                            echo "🔐 Running comprehensive OWASP ZAP security scan..."
                             script {
                                 sh script: """
-                                    echo "🔐 Running ZAP baseline scan against \${APP_URL}..."
+                                    set +e  # Don't fail immediately on ZAP errors (it returns non-zero on findings)
 
-                                    # Create reports directory in ZAP working directory
+                                    echo "🔐 Running ZAP baseline scan against \${APP_URL}..."
                                     mkdir -p /zap/wrk/reports
 
-                                    # Run ZAP baseline scan (built into the container)
+                                    # Run ZAP baseline scan
+                                    ZAP_EXIT_CODE=0
                                     zap-baseline.py \\
                                         -t \${APP_URL} \\
                                         -r /zap/wrk/reports/baseline-report.html \\
                                         -w /zap/wrk/reports/baseline-report.md \\
                                         -x /zap/wrk/reports/baseline-report.xml \\
-                                        -J /zap/wrk/reports/baseline-report.json || echo "⚠️ ZAP scan found security issues (non-blocking)"
+                                        -J /zap/wrk/reports/baseline-report.json || ZAP_EXIT_CODE=\$?
 
-                                    # Copy reports to artifacts directory (from ZAP user perspective)
+                                    echo "ZAP scan completed with exit code: \${ZAP_EXIT_CODE}"
+
+                                    # Copy reports to artifacts directory
                                     mkdir -p \${ARTIFACTS_DIR}/zap-reports
-                                    cp -r /zap/wrk/reports/* \${ARTIFACTS_DIR}/zap-reports/ || true
+                                    cp -r /zap/wrk/reports/* \${ARTIFACTS_DIR}/zap-reports/ 2>/dev/null || true
 
-                                    # Parse JSON report for security metrics
+                                    # Install jq if not available (needed for JSON parsing)
+                                    if ! command -v jq &> /dev/null; then
+                                        apk add --no-cache jq 2>/dev/null || echo "Warning: jq not available"
+                                    fi
+
+                                    # Parse and analyze security findings
                                     if [ -f "\${ARTIFACTS_DIR}/zap-reports/baseline-report.json" ]; then
-                                        echo "=== Security Scan Results ===" > \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
-                                        echo "Scan completed at: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                        echo "📊 Analyzing security findings..."
+
+                                        cat > \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt << 'ZAPEOF'
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECURITY SCAN RESULTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ZAPEOF
+
+                                        echo "Scan Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
                                         echo "Target: \${APP_URL}" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
                                         echo "" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
 
-                                        # Count alerts by risk level if jq is available
+                                        # Count alerts by severity
                                         if command -v jq &> /dev/null; then
-                                            echo "Alert Summary:" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
-                                            jq -r '.site[0].alerts[] | "- [\\(.riskdesc)] \\(.alert) (Count: \\(.count))"' \${ARTIFACTS_DIR}/zap-reports/baseline-report.json >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt 2>/dev/null || echo "No alerts detected" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
-                                        fi
+                                            HIGH=\$(jq '[.site[0].alerts[] | select(.riskdesc | startswith("High"))] | length' \${ARTIFACTS_DIR}/zap-reports/baseline-report.json 2>/dev/null || echo 0)
+                                            MEDIUM=\$(jq '[.site[0].alerts[] | select(.riskdesc | startswith("Medium"))] | length' \${ARTIFACTS_DIR}/zap-reports/baseline-report.json 2>/dev/null || echo 0)
+                                            LOW=\$(jq '[.site[0].alerts[] | select(.riskdesc | startswith("Low"))] | length' \${ARTIFACTS_DIR}/zap-reports/baseline-report.json 2>/dev/null || echo 0)
+                                            INFO=\$(jq '[.site[0].alerts[] | select(.riskdesc | startswith("Informational"))] | length' \${ARTIFACTS_DIR}/zap-reports/baseline-report.json 2>/dev/null || echo 0)
 
-                                        cat \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                            echo "Alert Summary by Severity:" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                            echo "  ❌ High: \${HIGH}" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                            echo "  ⚠️  Medium: \${MEDIUM}" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                            echo "  ℹ️  Low: \${LOW}" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                            echo "  📋 Informational: \${INFO}" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                            echo "" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+
+                                            # List all findings with details
+                                            echo "Detailed Findings:" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                            echo "" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+
+                                            jq -r '.site[0].alerts[] | "[\(.riskdesc)] \(.alert)\n  Description: \(.desc | gsub("<[^>]*>"; "") | .[0:200])...\n  Solution: \(.solution | gsub("<[^>]*>"; "") | .[0:150])...\n  Count: \(.count) instances\n  Confidence: \(.confidence)\n"' \${ARTIFACTS_DIR}/zap-reports/baseline-report.json >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt 2>/dev/null || echo "Unable to parse detailed findings" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+
+                                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                            echo "Security Assessment:" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+
+                                            if [ "\${HIGH}" -eq 0 ] && [ "\${MEDIUM}" -eq 0 ]; then
+                                                echo "  ✅ PASS - No high or medium severity issues found" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                                SECURITY_PASS=true
+                                            elif [ "\${HIGH}" -eq 0 ]; then
+                                                echo "  ⚠️  WARNING - Medium severity issues found" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                                SECURITY_PASS=true
+                                            else
+                                                echo "  ❌ FAIL - High severity security issues detected" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                                SECURITY_PASS=false
+                                            fi
+
+                                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+
+                                            # Add to build info
+                                            echo "=== OWASP ZAP Security Scan ===" >> \${ARTIFACTS_DIR}/build-info.txt
+                                            echo "Scan Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
+                                            echo "Target: \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
+                                            echo "High Severity: \${HIGH}" >> \${ARTIFACTS_DIR}/build-info.txt
+                                            echo "Medium Severity: \${MEDIUM}" >> \${ARTIFACTS_DIR}/build-info.txt
+                                            echo "Low Severity: \${LOW}" >> \${ARTIFACTS_DIR}/build-info.txt
+
+                                            # Display summary
+                                            cat \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+
+                                            # FAIL THE BUILD if high severity issues found
+                                            if [ "\${SECURITY_PASS}" = "false" ]; then
+                                                echo "❌ Security scan failed! High severity vulnerabilities detected."
+                                                echo "Review the detailed report at: ${BUILD_URL}OWASP_20ZAP_20Security_20Report/"
+                                                exit 1
+                                            fi
+
+                                            echo "✅ Security scan passed! No high severity issues."
+                                        else
+                                            echo "⚠️  Warning: jq not available, cannot analyze findings in detail" >> \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                            cat \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt
+                                        fi
+                                    else
+                                        echo "❌ ZAP report not generated!"
+                                        exit 1
                                     fi
                                 """, returnStdout: false
                             }
@@ -752,9 +1087,9 @@ AWKEOF
     "location": "Jenkins Artifacts",
     "artifacts_dir": "\${ARTIFACTS_DIR}",
     "reports": {
+      "api_tests": "build-artifacts/api-tests/test-results.txt",
       "jmeter": "build-artifacts/jmeter-reports/html/index.html",
-      "zap": "build-artifacts/zap-reports/baseline-report.html",
-      "soapui": "build-artifacts/soapui-reports/"
+      "zap": "build-artifacts/zap-reports/baseline-report.html"
     }
   }
 }
@@ -767,6 +1102,7 @@ EOF
                                     echo "Jenkins Build Artifacts: ${BUILD_URL}artifact/build-artifacts/"
                                     echo ""
                                     echo "Detailed Reports:"
+                                    echo "  - API Functional Tests: ${BUILD_URL}artifact/build-artifacts/api-tests/test-results.txt"
                                     echo "  - JMeter Performance: ${BUILD_URL}JMeter_20Performance_20Report/"
                                     echo "  - OWASP ZAP Security: ${BUILD_URL}OWASP_20ZAP_20Security_20Report/"
                                     echo "  - Full Artifacts: ${BUILD_URL}artifact/"
@@ -829,9 +1165,9 @@ EOF
         <h2>📊 Reports</h2>
         <ul>
             <li>JUnit Test Reports</li>
-            <li>JMeter Performance Report</li>
-            <li>OWASP ZAP Security Report</li>
-            <li>SoapUI API Test Results</li>
+            <li>REST API Functional Tests</li>
+            <li>JMeter Performance Report (with latency & throughput metrics)</li>
+            <li>OWASP ZAP Security Report (vulnerability analysis)</li>
         </ul>
     </div>
 </body>
