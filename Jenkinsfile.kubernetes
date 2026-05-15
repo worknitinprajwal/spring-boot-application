@@ -520,7 +520,7 @@ EOF
                                 echo "  Running Image: \$RUNNING_IMAGE"
 
                                 if [ "\$RUNNING_IMAGE" = "\$EXPECTED_IMAGE" ]; then
-                                    if curl -s -f ${appUrl}/actuator/health > /dev/null 2>&1; then
+                                    if curl -s -f ${env.APP_URL}/actuator/health > /dev/null 2>&1; then
                                         echo "✅ Correct image deployed and app is healthy!"
                                         exit 0
                                     else
