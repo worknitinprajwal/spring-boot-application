@@ -193,7 +193,7 @@ spec:
                                       > ${ARTIFACTS_DIR}/aikido-scan-details.json || echo "❌ Failed to fetch details from API"
 
                                     # Verify we got valid JSON
-                                    if [ -f "${ARTIFACTS_DIR}/aikido-scan-details.json" ]; then
+                                    if [ -f ${ARTIFACTS_DIR}/aikido-scan-details.json ]; then
                                         echo "DEBUG: aikido-scan-details.json exists"
                                         echo "DEBUG: File size: \$(wc -c < ${ARTIFACTS_DIR}/aikido-scan-details.json) bytes"
                                         echo "DEBUG: First 200 chars:"
