@@ -481,15 +481,22 @@ EOF
                     script {
                         def argoApp = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev' : 'fitness-tracker-test'
                         def appNamespace = env.BRANCH_NAME == 'develop' ? 'dev' : 'test'
-                        def appUrl = env.BRANCH_NAME == 'develop' ?
+                        def ingressHost = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev.local' : 'fitness-tracker-test.local'
+                        def ingressPort = env.BRANCH_NAME == 'develop' ? '8081' : '8082'
+                        def ingressUrl = "http://${ingressHost}:${ingressPort}"
+
+                        // Internal URL for health checks (NodePort from within Jenkins cluster)
+                        def nodePortUrl = env.BRANCH_NAME == 'develop' ?
                             'http://172.18.0.5:30830' :
                             'http://172.18.0.7:31397'
 
-                        env.APP_URL = appUrl
+                        env.APP_URL = nodePortUrl  // Use NodePort for internal health checks
+                        env.EXTERNAL_URL = ingressUrl  // Display ingress URL to users
 
                         echo "📍 ArgoCD App: ${argoApp}"
                         echo "📍 Namespace: ${appNamespace}"
-                        echo "📍 App URL (NodePort): ${appUrl}"
+                        echo "📍 Ingress URL: ${ingressUrl}"
+                        echo "📍 Internal Test URL: ${nodePortUrl}"
 
                         sh """
                             export KUBECONFIG=/root/.kube/config
@@ -1191,6 +1198,12 @@ ZAPEOF
 }
 EOF
 
+                                    echo ""
+                                    echo "================================================"
+                                    echo "🎉 APPLICATION DEPLOYED SUCCESSFULLY"
+                                    echo "================================================"
+                                    echo "Access your application at:"
+                                    echo "  🌐 Ingress URL: \${EXTERNAL_URL}"
                                     echo ""
                                     echo "================================================"
                                     echo "📊 Test Reports Storage Location:"
