@@ -507,6 +507,33 @@ EOF
 
         // NOTE: "Install Testing Tools" stage REMOVED - tools now pre-installed in containers!
 
+        stage('Prepare Test Directories') {
+            when {
+                expression {
+                    currentBuild.result == null || currentBuild.result == 'SUCCESS'
+                }
+            }
+            steps {
+                container('maven') {
+                    echo "📁 Creating test report directories with proper permissions..."
+                    sh """
+                        # Create all test report directories in maven container
+                        # This ensures they're owned by the correct user
+                        mkdir -p ${ARTIFACTS_DIR}/soapui-reports
+                        mkdir -p ${ARTIFACTS_DIR}/jmeter-reports
+                        mkdir -p ${ARTIFACTS_DIR}/zap-reports
+
+                        # Make them world-writable so other containers can write
+                        chmod -R 777 ${ARTIFACTS_DIR}/soapui-reports
+                        chmod -R 777 ${ARTIFACTS_DIR}/jmeter-reports
+                        chmod -R 777 ${ARTIFACTS_DIR}/zap-reports
+
+                        echo "✅ Test directories ready"
+                    """
+                }
+            }
+        }
+
         stage('Run Tests in Parallel') {
             when {
                 expression {
@@ -520,8 +547,6 @@ EOF
                             echo "🧪 Running SoapUI API tests via Maven..."
                             script {
                                 sh """
-                                    mkdir -p ${ARTIFACTS_DIR}/soapui-reports
-
                                     # Use SoapUI Maven plugin - most reliable in CI
                                     if [ -f "pom.xml" ]; then
                                         echo "Running SoapUI tests against ${env.APP_URL}..."
@@ -555,8 +580,6 @@ EOF
                             echo "⚡ Running JMeter performance tests..."
                             script {
                                 sh """
-                                    mkdir -p ${ARTIFACTS_DIR}/jmeter-reports
-
                                     if [ -f "tests/jmeter/fitness-tracker-load-test.jmx" ]; then
                                         echo "Running JMeter performance tests against ${env.APP_URL}..."
                                         jmeter -n \\
@@ -609,8 +632,6 @@ JEOF
                             echo "🔐 Running OWASP ZAP security scan..."
                             script {
                                 sh """
-                                    mkdir -p ${ARTIFACTS_DIR}/zap-reports
-
                                     echo "🔐 Running ZAP baseline scan against ${env.APP_URL}..."
 
                                     # Run ZAP baseline scan (built into the container)
