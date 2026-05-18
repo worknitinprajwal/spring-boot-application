@@ -1596,8 +1596,8 @@ EOF
                             registerBuildArtifactMetadata(
                                 name: "fitness-tracker-jar",
                                 version: "${BUILD_NUMBER}",
-                                url: "${BUILD_URL}artifact/target/fitness-tracker.jar",
-                                description: "Application JAR file"
+                                url: "${BUILD_URL}artifact/build-artifacts/fitness-tracker-1.0.0.jar",
+                                description: "Application JAR file (48MB Spring Boot fat JAR)"
                             )
 
                             // Register test reports
