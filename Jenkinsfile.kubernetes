@@ -211,17 +211,31 @@ COMMIT_MSG_EOF
             }
             post {
                 always {
-                    // Archive JAR file
-                    archiveArtifacts artifacts: 'target/*.jar', allowEmptyArchive: true, fingerprint: true
+                    container('maven') {
+                        script {
+                            // Debug: Show what files exist
+                            sh """
+                                echo "📂 Checking workspace contents..."
+                                ls -la target/ || echo "❌ target/ directory not found"
+                                ls -la target/*.jar || echo "❌ No JAR files found in target/"
+                            """
 
-                    // Only process test results if they exist (avoid warnings when no tests present)
-                    script {
-                        if (fileExists('target/surefire-reports')) {
-                            echo "📊 Publishing unit test results..."
-                            junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
-                            archiveArtifacts artifacts: 'target/surefire-reports/**/*', allowEmptyArchive: true
-                        } else {
-                            echo "⚠️  No unit tests found - skipping test report publishing"
+                            // Archive JAR file - fail if not found
+                            if (fileExists('target')) {
+                                archiveArtifacts artifacts: 'target/*.jar', allowEmptyArchive: false, fingerprint: true
+                                echo "✅ JAR file archived successfully"
+                            } else {
+                                echo "❌ ERROR: target/ directory does not exist! JAR was not built."
+                            }
+
+                            // Only process test results if they exist
+                            if (fileExists('target/surefire-reports')) {
+                                echo "📊 Publishing unit test results..."
+                                junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
+                                archiveArtifacts artifacts: 'target/surefire-reports/**/*', allowEmptyArchive: true
+                            } else {
+                                echo "⚠️  No unit tests found - skipping test report publishing"
+                            }
                         }
                     }
                 }
