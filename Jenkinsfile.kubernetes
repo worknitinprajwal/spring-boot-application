@@ -157,6 +157,13 @@ spec:
                         env.GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
                         env.GIT_COMMIT_MSG = sh(script: "git log -1 --pretty=%B", returnStdout: true).trim()
 
+                        // Check if commit message contains [skip ci] or [ci skip]
+                        if (env.GIT_COMMIT_MSG.contains('[skip ci]') || env.GIT_COMMIT_MSG.contains('[ci skip]')) {
+                            echo "⏭️  Skipping build - commit message contains [skip ci]"
+                            currentBuild.result = 'NOT_BUILT'
+                            error('Build skipped by [skip ci] tag in commit message')
+                        }
+
                         // Write commit info, escaping special characters in commit message
                         sh """
                             echo "Commit: ${env.GIT_COMMIT_SHORT}" >> ${ARTIFACTS_DIR}/build-info.txt
