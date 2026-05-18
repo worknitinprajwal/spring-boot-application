@@ -1563,6 +1563,8 @@ EOF
                     // Publish events to CloudBees Analytics
                     script {
                         try {
+                            def timestamp = new Date().format("yyyy-MM-dd'T'HH:mm:ss'Z'", TimeZone.getTimeZone('UTC'))
+
                             // Publish build completion event
                             publishEvent event: jsonEvent("""
                             {
@@ -1570,9 +1572,9 @@ EOF
                                     "number": "${BUILD_NUMBER}",
                                     "branch": "${BRANCH_NAME}",
                                     "commit": "${GIT_COMMIT_SHORT}",
-                                    "timestamp": "${new Date().format('yyyy-MM-dd\'T\'HH:mm:ss\'Z\', TimeZone.getTimeZone('UTC'))}",
+                                    "timestamp": "${timestamp}",
                                     "status": "SUCCESS",
-                                    "duration": ${currentBuild.duration}
+                                    "duration": ${currentBuild.duration ?: 0}
                                 },
                                 "artifacts": {
                                     "docker_image": "${IMAGE_NAME}:${IMAGE_TAG}",
