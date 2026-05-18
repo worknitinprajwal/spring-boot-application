@@ -4,10 +4,6 @@
 // Uses Kubernetes pod template with pre-installed testing tools
 
 pipeline {
-    triggers {
-        pollSCM('H/5 * * * *')  // Poll every 5 minutes for changes
-    }
-
     agent {
         kubernetes {
             label 'maven-jdk17'
