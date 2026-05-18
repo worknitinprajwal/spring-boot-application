@@ -308,9 +308,29 @@ COMMIT_MSG_EOF
             }
             post {
                 always {
-                    // Archive security scan results
-                    archiveArtifacts artifacts: 'build-artifacts/aikido-scan-output.txt', allowEmptyArchive: true
-                    archiveArtifacts artifacts: 'build-artifacts/aikido-scan-details*.json', allowEmptyArchive: true
+                    container('maven') {
+                        script {
+                            // Archive security scan results
+                            archiveArtifacts artifacts: 'build-artifacts/aikido-scan-output.txt', allowEmptyArchive: true
+                            archiveArtifacts artifacts: 'build-artifacts/aikido-scan-details*.json', allowEmptyArchive: true
+
+                            // Register Aikido security scan with CloudBees Unify
+                            try {
+                                if (fileExists('build-artifacts/aikido-scan-details.json')) {
+                                    registerSecurityScan(
+                                        scanner: 'Aikido Security',
+                                        scanResultsFile: 'build-artifacts/aikido-scan-details.json',
+                                        scanType: 'SAST'
+                                    )
+                                    echo "✅ Aikido scan results registered with CloudBees Unify"
+                                } else {
+                                    echo "⚠️  Aikido scan results file not found - skipping registration"
+                                }
+                            } catch (Exception e) {
+                                echo "⚠️  Warning: Failed to register Aikido scan: ${e.message}"
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1184,18 +1204,38 @@ SUMMARYEOF
                     }
                     post {
                         always {
-                            // Archive all ZAP reports (HTML, JSON, XML, Markdown, metrics)
-                            archiveArtifacts artifacts: 'build-artifacts/zap-reports/**/*', allowEmptyArchive: true
+                            container('maven') {
+                                script {
+                                    // Archive all ZAP reports (HTML, JSON, XML, Markdown, metrics)
+                                    archiveArtifacts artifacts: 'build-artifacts/zap-reports/**/*', allowEmptyArchive: true
 
-                            // Publish interactive HTML security report
-                            publishHTML(target: [
-                                allowMissing: true,
-                                alwaysLinkToLastBuild: true,
-                                keepAll: true,
-                                reportDir: 'build-artifacts/zap-reports',
-                                reportFiles: 'baseline-report.html',
-                                reportName: 'OWASP ZAP Security Report'
-                            ])
+                                    // Publish interactive HTML security report
+                                    publishHTML(target: [
+                                        allowMissing: true,
+                                        alwaysLinkToLastBuild: true,
+                                        keepAll: true,
+                                        reportDir: 'build-artifacts/zap-reports',
+                                        reportFiles: 'baseline-report.html',
+                                        reportName: 'OWASP ZAP Security Report'
+                                    ])
+
+                                    // Register OWASP ZAP security scan with CloudBees Unify
+                                    try {
+                                        if (fileExists('build-artifacts/zap-reports/baseline-report.json')) {
+                                            registerSecurityScan(
+                                                scanner: 'OWASP ZAP',
+                                                scanResultsFile: 'build-artifacts/zap-reports/baseline-report.json',
+                                                scanType: 'DAST'
+                                            )
+                                            echo "✅ OWASP ZAP scan results registered with CloudBees Unify"
+                                        } else {
+                                            echo "⚠️  OWASP ZAP scan results file not found - skipping registration"
+                                        }
+                                    } catch (Exception e) {
+                                        echo "⚠️  Warning: Failed to register ZAP scan: ${e.message}"
+                                    }
+                                }
+                            }
                         }
                     }
                 }
