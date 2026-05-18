@@ -1583,7 +1583,7 @@ EOF
                             registerBuildArtifactMetadata(
                                 name: "test-reports",
                                 version: "${BUILD_NUMBER}",
-                                url: "${BUILD_URL}artifact/build-artifacts/test-reports/",
+                                url: "${BUILD_URL}artifact/build-artifacts/",
                                 description: "Test reports (API, Performance, Security)"
                             )
 
