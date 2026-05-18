@@ -1565,32 +1565,26 @@ EOF
                         try {
                             // Register Docker image artifact
                             registerBuildArtifactMetadata(
-                                artifactName: "docker-image",
-                                artifactValue: "${IMAGE_NAME}:${IMAGE_TAG}",
-                                metadata: [
-                                    registry: env.DOCKER_REGISTRY,
-                                    tag: env.IMAGE_TAG,
-                                    branch: env.BRANCH_NAME
-                                ]
+                                name: "docker-image",
+                                version: "${IMAGE_TAG}",
+                                url: "https://hub.docker.com/r/${IMAGE_NAME}",
+                                description: "Docker image: ${IMAGE_NAME}:${IMAGE_TAG}"
                             )
 
                             // Register JAR artifact
                             registerBuildArtifactMetadata(
-                                artifactName: "application-jar",
-                                artifactValue: "fitness-tracker.jar",
-                                metadata: [
-                                    path: "target/fitness-tracker.jar",
-                                    url: "${BUILD_URL}artifact/target/fitness-tracker.jar"
-                                ]
+                                name: "fitness-tracker-jar",
+                                version: "${BUILD_NUMBER}",
+                                url: "${BUILD_URL}artifact/target/fitness-tracker.jar",
+                                description: "Application JAR file"
                             )
 
                             // Register test reports
                             registerBuildArtifactMetadata(
-                                artifactName: "test-reports",
-                                artifactValue: "build-artifacts/test-reports/",
-                                metadata: [
-                                    url: "${BUILD_URL}artifact/build-artifacts/test-reports/"
-                                ]
+                                name: "test-reports",
+                                version: "${BUILD_NUMBER}",
+                                url: "${BUILD_URL}artifact/build-artifacts/test-reports/",
+                                description: "Test reports (API, Performance, Security)"
                             )
 
                             echo "✅ Artifacts registered with CloudBees Platform"
