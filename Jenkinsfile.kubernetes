@@ -1562,34 +1562,45 @@ EOF
         stage('Publish to CloudBees Unify') {
             steps {
                 container('maven') {
-                    echo "📊 Publishing metrics to CloudBees Unify..."
-                    sh """
-                        cat > ${ARTIFACTS_DIR}/unify-data.json <<EOF
-{
-  "build": {
-    "number": "${BUILD_NUMBER}",
-    "branch": "${BRANCH_NAME}",
-    "commit": "${GIT_COMMIT_SHORT}",
-    "timestamp": "\$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-    "status": "SUCCESS"
-  },
-  "artifacts": {
-    "docker_image": "${IMAGE_NAME}:${IMAGE_TAG}",
-    "jar_file": "fitness-tracker.jar",
-    "helm_chart": "values.yaml"
-  },
-  "links": {
-    "artifacts": "${BUILD_URL}artifact/",
-    "console": "${BUILD_URL}console"
-  }
-}
-EOF
+                    echo "📊 Publishing artifacts to CloudBees Unify..."
 
-                        echo "✅ Build data ready for CloudBees Unify ingestion"
-                        cat ${ARTIFACTS_DIR}/unify-data.json
-                    """
+                    // Archive artifacts to Jenkins first
+                    archiveArtifacts artifacts: 'build-artifacts/**/*', allowEmptyArchive: false
 
-                    archiveArtifacts artifacts: 'build-artifacts/unify-data.json', allowEmptyArchive: true
+                    // Publish events to CloudBees Analytics
+                    script {
+                        try {
+                            // Publish build completion event
+                            publishEvent event: jsonEvent("""
+                            {
+                                "build": {
+                                    "number": "${BUILD_NUMBER}",
+                                    "branch": "${BRANCH_NAME}",
+                                    "commit": "${GIT_COMMIT_SHORT}",
+                                    "timestamp": "${new Date().format('yyyy-MM-dd\'T\'HH:mm:ss\'Z\', TimeZone.getTimeZone('UTC'))}",
+                                    "status": "SUCCESS",
+                                    "duration": ${currentBuild.duration}
+                                },
+                                "artifacts": {
+                                    "docker_image": "${IMAGE_NAME}:${IMAGE_TAG}",
+                                    "jar_file": "fitness-tracker.jar",
+                                    "test_reports": "build-artifacts/test-reports/",
+                                    "performance_reports": "build-artifacts/performance/",
+                                    "security_reports": "build-artifacts/security/"
+                                },
+                                "links": {
+                                    "artifacts": "${BUILD_URL}artifact/",
+                                    "console": "${BUILD_URL}console"
+                                }
+                            }
+                            """), verbose: true
+
+                            echo "✅ Build data published to CloudBees Unify"
+                        } catch (Exception e) {
+                            echo "⚠️  Warning: Failed to publish to CloudBees Unify: ${e.message}"
+                            echo "Build artifacts are still available in Jenkins"
+                        }
+                    }
                 }
             }
         }
