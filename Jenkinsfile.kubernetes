@@ -1560,39 +1560,42 @@ EOF
                     // Archive artifacts to Jenkins first
                     archiveArtifacts artifacts: 'build-artifacts/**/*', allowEmptyArchive: false
 
-                    // Publish events to CloudBees Analytics
+                    // Register artifacts with CloudBees Platform
                     script {
                         try {
-                            def timestamp = new Date().format("yyyy-MM-dd'T'HH:mm:ss'Z'", TimeZone.getTimeZone('UTC'))
+                            // Register Docker image artifact
+                            registerBuildArtifactMetadata(
+                                artifactName: "docker-image",
+                                artifactValue: "${IMAGE_NAME}:${IMAGE_TAG}",
+                                metadata: [
+                                    registry: env.DOCKER_REGISTRY,
+                                    tag: env.IMAGE_TAG,
+                                    branch: env.BRANCH_NAME
+                                ]
+                            )
 
-                            // Publish build completion event
-                            publishEvent event: jsonEvent("""
-                            {
-                                "build": {
-                                    "number": "${BUILD_NUMBER}",
-                                    "branch": "${BRANCH_NAME}",
-                                    "commit": "${GIT_COMMIT_SHORT}",
-                                    "timestamp": "${timestamp}",
-                                    "status": "SUCCESS",
-                                    "duration": ${currentBuild.duration ?: 0}
-                                },
-                                "artifacts": {
-                                    "docker_image": "${IMAGE_NAME}:${IMAGE_TAG}",
-                                    "jar_file": "fitness-tracker.jar",
-                                    "test_reports": "build-artifacts/test-reports/",
-                                    "performance_reports": "build-artifacts/performance/",
-                                    "security_reports": "build-artifacts/security/"
-                                },
-                                "links": {
-                                    "artifacts": "${BUILD_URL}artifact/",
-                                    "console": "${BUILD_URL}console"
-                                }
-                            }
-                            """), verbose: true
+                            // Register JAR artifact
+                            registerBuildArtifactMetadata(
+                                artifactName: "application-jar",
+                                artifactValue: "fitness-tracker.jar",
+                                metadata: [
+                                    path: "target/fitness-tracker.jar",
+                                    url: "${BUILD_URL}artifact/target/fitness-tracker.jar"
+                                ]
+                            )
 
-                            echo "✅ Build data published to CloudBees Unify"
+                            // Register test reports
+                            registerBuildArtifactMetadata(
+                                artifactName: "test-reports",
+                                artifactValue: "build-artifacts/test-reports/",
+                                metadata: [
+                                    url: "${BUILD_URL}artifact/build-artifacts/test-reports/"
+                                ]
+                            )
+
+                            echo "✅ Artifacts registered with CloudBees Platform"
                         } catch (Exception e) {
-                            echo "⚠️  Warning: Failed to publish to CloudBees Unify: ${e.message}"
+                            echo "⚠️  Warning: Failed to register artifacts: ${e.message}"
                             echo "Build artifacts are still available in Jenkins"
                         }
                     }
