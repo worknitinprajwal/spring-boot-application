@@ -838,14 +838,20 @@ HTMLEOF
                             }
 
                             // Publish HTML report
-                            publishHTML(target: [
-                                allowMissing: true,
-                                alwaysLinkToLastBuild: true,
-                                keepAll: true,
-                                reportDir: 'build-artifacts/api-tests',
-                                reportFiles: 'index.html',
-                                reportName: 'API Functional Tests'
-                            ])
+                            script {
+                                try {
+                                    publishHTML(target: [
+                                        allowMissing: true,
+                                        alwaysLinkToLastBuild: true,
+                                        keepAll: true,
+                                        reportDir: 'build-artifacts/api-tests',
+                                        reportFiles: 'index.html',
+                                        reportName: 'API Functional Tests'
+                                    ])
+                                } catch (Exception e) {
+                                    echo "⚠️  Warning: Failed to publish API test HTML report: ${e.message}"
+                                }
+                            }
                         }
                     }
                 }
