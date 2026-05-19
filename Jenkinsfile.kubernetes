@@ -393,14 +393,15 @@ SARIF_EOF
 
                             archiveArtifacts artifacts: 'build-artifacts/aikido-scan.sarif', allowEmptyArchive: true
 
-                            // Register with CloudBees Unify
+                            // Register with CloudBees Unify using recordCoverage (supports SARIF)
                             try {
                                 if (fileExists('build-artifacts/aikido-scan.sarif')) {
-                                    registerSecurityScan(
-                                        scanner: 'Aikido Security',
-                                        filePath: 'build-artifacts/aikido-scan.sarif'
+                                    recordCoverage(
+                                        tools: [[parser: 'SARIF', pattern: 'build-artifacts/aikido-scan.sarif']],
+                                        id: 'aikido-security',
+                                        name: 'Aikido Security Scan'
                                     )
-                                    echo "✅ Aikido scan results registered with CloudBees Unify"
+                                    echo "✅ Aikido scan results registered with CloudBees Unify via recordCoverage"
                                 } else {
                                     echo "⚠️  Aikido SARIF file not found - skipping registration"
                                 }
@@ -1353,14 +1354,15 @@ SARIF_EOF
 
                                     archiveArtifacts artifacts: 'build-artifacts/zap-reports/zap-scan.sarif', allowEmptyArchive: true
 
-                                    // Register with CloudBees Unify
+                                    // Register with CloudBees Unify using recordCoverage (supports SARIF)
                                     try {
                                         if (fileExists('build-artifacts/zap-reports/zap-scan.sarif')) {
-                                            registerSecurityScan(
-                                                scanner: 'OWASP ZAP',
-                                                filePath: 'build-artifacts/zap-reports/zap-scan.sarif'
+                                            recordCoverage(
+                                                tools: [[parser: 'SARIF', pattern: 'build-artifacts/zap-reports/zap-scan.sarif']],
+                                                id: 'owasp-zap',
+                                                name: 'OWASP ZAP Security Scan'
                                             )
-                                            echo "✅ OWASP ZAP scan results registered with CloudBees Unify"
+                                            echo "✅ OWASP ZAP scan results registered with CloudBees Unify via recordCoverage"
                                         } else {
                                             echo "⚠️  ZAP SARIF file not found - skipping registration"
                                         }
