@@ -595,7 +595,7 @@ EOF
                         def ingressUrl = "http://${ingressHost}:${ingressPort}"
 
                         // Query actual NodePort from the service
-                        def clusterIp = env.BRANCH_NAME == 'develop' ? '172.18.0.5' : '172.18.0.7'
+                        def clusterIp = env.BRANCH_NAME == 'develop' ? '172.18.0.4' : '172.18.0.6'
                         def targetContext = env.BRANCH_NAME == 'develop' ? 'kind-kind-dev' : 'kind-kind-test'
                         def actualNodePort = sh(
                             script: "kubectl --context=${targetContext} -n ${appNamespace} get svc fitness-tracker -o jsonpath='{.spec.ports[0].nodePort}'",
