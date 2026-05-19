@@ -1814,64 +1814,32 @@ EOF
                     echo "📝 Creating Jira ticket for pipeline failure..."
 
                     withCredentials([string(credentialsId: 'jira-api-token', variable: 'JIRA_API_TOKEN')]) {
-                        // Escape special characters for JSON
-                        def escapedReason = failureReason.replaceAll('"', '\\\\"').replaceAll('\n', ' ').replaceAll('\r', '')
-                        if (escapedReason.length() > 200) {
-                            escapedReason = escapedReason.substring(0, 200) + "..."
+                        // Escape special characters for JSON - preserve newlines for code block
+                        def escapedReason = failureReason.replaceAll('"', '\\\\"').replaceAll('\\\\', '\\\\\\\\')
+                        if (escapedReason.length() > 500) {
+                            escapedReason = escapedReason.substring(0, 500) + "..."
                         }
+
+                        // Get current timestamp
+                        def timestamp = new Date().format("yyyy-MM-dd'T'HH:mm:ss'Z'", TimeZone.getTimeZone('UTC'))
 
                         def jiraPayload = """
 {
   "fields": {
     "project": { "key": "CBDEMO" },
-    "summary": "Pipeline Failed: ${JOB_NAME} #${BUILD_NUMBER} - ${failedStage}",
+    "summary": "Pipeline Failed: ${JOB_NAME} #${BUILD_NUMBER}",
     "description": {
       "type": "doc",
       "version": 1,
       "content": [
         {
-          "type": "heading",
-          "attrs": {"level": 2},
-          "content": [{"type": "text", "text": "Pipeline Build Failure Report"}]
-        },
-        {
-          "type": "heading",
-          "attrs": {"level": 3},
-          "content": [{"type": "text", "text": "Build Information"}]
-        },
-        {
-          "type": "bulletList",
+          "type": "codeBlock",
+          "attrs": {"language": "text"},
           "content": [
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Job: ${JOB_NAME}"}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Build Number: ${BUILD_NUMBER}"}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Branch: ${BRANCH_NAME}"}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Failed Stage: ${failedStage}"}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Duration: ${buildDuration}"}]}]}
-          ]
-        },
-        {
-          "type": "heading",
-          "attrs": {"level": 3},
-          "content": [{"type": "text", "text": "Failure Reason"}]
-        },
-        {
-          "type": "paragraph",
-          "content": [{"type": "text", "text": "${escapedReason}"}]
-        },
-        {
-          "type": "heading",
-          "attrs": {"level": 3},
-          "content": [{"type": "text", "text": "Recommended Actions"}]
-        },
-        {
-          "type": "orderedList",
-          "content": [
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Console output for specific error messages"}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Recent code changes that may have introduced issues"}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Network connectivity or timeout issues"}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "ArgoCD synchronization status"}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Target cluster accessibility"}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Kubernetes pod stability (check if pods went offline)"}]}]}
+            {
+              "type": "text",
+              "text": "Pipeline Build Failure Report\\n\\nBuild Information:\\n- Job: ${JOB_NAME}\\n- Build Number: ${BUILD_NUMBER}\\n- Branch: ${BRANCH_NAME}\\n- Failed Stage: ${failedStage}\\n- Build Result: ${buildResult}\\n- Duration: ${buildDuration}\\n- Build URL: ${BUILD_URL}\\n- Timestamp: ${timestamp}\\n\\nFailure Analysis:\\nThis build failed during the ${failedStage} stage.\\n\\nError: ${escapedReason}\\n\\nRecommended Actions:\\n1. Console output for specific error messages\\n2. Recent code changes\\n3. Network connectivity issues\\n4. ArgoCD synchronization status\\n5. Target cluster accessibility\\n\\nLinks:\\n- Console Output: ${BUILD_URL}console\\n- Build Artifacts: ${BUILD_URL}artifact/\\n- Test Reports: ${BUILD_URL}testReport/"
+            }
           ]
         },
         {
@@ -1960,44 +1928,28 @@ Links:
                             }
 
                             sh """
+                                # Get timestamp
+                                TIMESTAMP=\$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
                                 # Create Jira payload (using /tmp to avoid container dependency)
                                 cat > /tmp/jira-payload-${BUILD_NUMBER}.json << 'JSONEOF'
 {
   "fields": {
     "project": { "key": "CBDEMO" },
-    "summary": "Pipeline Failed: ${JOB_NAME} #${BUILD_NUMBER} - ${failedStage}",
+    "summary": "Pipeline Failed: ${JOB_NAME} #${BUILD_NUMBER}",
     "description": {
       "type": "doc",
       "version": 1,
       "content": [
         {
-          "type": "heading",
-          "attrs": {"level": 2},
-          "content": [{"type": "text", "text": "Pipeline Build Failure Report"}]
-        },
-        {
-          "type": "heading",
-          "attrs": {"level": 3},
-          "content": [{"type": "text", "text": "Build Information"}]
-        },
-        {
-          "type": "bulletList",
+          "type": "codeBlock",
+          "attrs": {"language": "text"},
           "content": [
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Job: ${JOB_NAME}"}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Build Number: ${BUILD_NUMBER}"}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Branch: ${BRANCH_NAME}"}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Failed Stage: ${failedStage}"}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Duration: ${buildDuration}"}]}]}
+            {
+              "type": "text",
+              "text": "Pipeline Build Failure Report\\n\\nBuild Information:\\n- Job: ${JOB_NAME}\\n- Build Number: ${BUILD_NUMBER}\\n- Branch: ${BRANCH_NAME}\\n- Failed Stage: ${failedStage}\\n- Build Result: ${buildResult}\\n- Duration: ${buildDuration}\\n- Build URL: ${BUILD_URL}\\n- Timestamp: TIMESTAMP_PLACEHOLDER\\n\\nFailure Analysis:\\nThis build failed during the ${failedStage} stage.\\n\\nError: ${escapedReason}\\n\\nRecommended Actions:\\n1. Console output for specific error messages\\n2. Recent code changes\\n3. Network connectivity issues\\n4. ArgoCD synchronization status\\n5. Target cluster accessibility\\n6. Kubernetes pod stability\\n\\nLinks:\\n- Console Output: ${BUILD_URL}console\\n- Build Artifacts: ${BUILD_URL}artifact/\\n- Test Reports: ${BUILD_URL}testReport/"
+            }
           ]
-        },
-        {
-          "type": "heading",
-          "attrs": {"level": 3},
-          "content": [{"type": "text", "text": "Failure Reason"}]
-        },
-        {
-          "type": "paragraph",
-          "content": [{"type": "text", "text": "${escapedReason}"}]
         },
         {
           "type": "heading",
@@ -2020,6 +1972,9 @@ Links:
   }
 }
 JSONEOF
+
+                                # Replace timestamp placeholder
+                                sed -i "s|TIMESTAMP_PLACEHOLDER|\$TIMESTAMP|g" /tmp/jira-payload-${BUILD_NUMBER}.json
 
                                 echo "📝 Creating Jira ticket with curl fallback..."
                                 RESPONSE=\$(curl -X POST \\
