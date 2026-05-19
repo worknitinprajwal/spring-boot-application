@@ -360,9 +360,7 @@ COMMIT_MSG_EOF
                             try {
                                 if (fileExists('build-artifacts/aikido-scan-details.json')) {
                                     registerSecurityScan(
-                                        scanner: 'Aikido Security',
-                                        scanResultsFile: 'build-artifacts/aikido-scan-details.json',
-                                        scanType: 'SAST'
+                                        scanner: 'Aikido Security'
                                     )
                                     echo "✅ Aikido scan results registered with CloudBees Unify"
                                 } else {
@@ -1298,9 +1296,7 @@ SUMMARYEOF
                                     try {
                                         if (fileExists('build-artifacts/zap-reports/baseline-report.json')) {
                                             registerSecurityScan(
-                                                scanner: 'OWASP ZAP',
-                                                scanResultsFile: 'build-artifacts/zap-reports/baseline-report.json',
-                                                scanType: 'DAST'
+                                                scanner: 'OWASP ZAP'
                                             )
                                             echo "✅ OWASP ZAP scan results registered with CloudBees Unify"
                                         } else {
