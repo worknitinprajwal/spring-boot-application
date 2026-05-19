@@ -435,7 +435,9 @@ EOF
         stage('Update Helm Chart') {
             when {
                 expression {
-                    currentBuild.result == null || currentBuild.result == 'SUCCESS'
+                    // Only update Helm chart if a new Docker image was built
+                    (currentBuild.result == null || currentBuild.result == 'SUCCESS') &&
+                    env.APP_CODE_CHANGED == 'true'
                 }
             }
             steps {
@@ -488,7 +490,9 @@ EOF
         stage('ArgoCD Deployment') {
             when {
                 expression {
-                    currentBuild.result == null || currentBuild.result == 'SUCCESS'
+                    // Only trigger ArgoCD if new image was built and Helm chart updated
+                    (currentBuild.result == null || currentBuild.result == 'SUCCESS') &&
+                    env.APP_CODE_CHANGED == 'true'
                 }
             }
             steps {
@@ -525,7 +529,11 @@ EOF
 
         stage('Verify ArgoCD Sync') {
             when {
-                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
+                expression {
+                    // Only verify if deployment happened
+                    (currentBuild.result == null || currentBuild.result == 'SUCCESS') &&
+                    env.APP_CODE_CHANGED == 'true'
+                }
             }
             steps {
                 container('maven') {
@@ -572,7 +580,9 @@ EOF
         stage('Wait for Deployment') {
             when {
                 expression {
-                    currentBuild.result == null || currentBuild.result == 'SUCCESS'
+                    // Only wait if deployment happened
+                    (currentBuild.result == null || currentBuild.result == 'SUCCESS') &&
+                    env.APP_CODE_CHANGED == 'true'
                 }
             }
             steps {
@@ -651,7 +661,9 @@ EOF
         stage('Prepare Test Directories') {
             when {
                 expression {
-                    currentBuild.result == null || currentBuild.result == 'SUCCESS'
+                    // Only run tests if new deployment happened
+                    (currentBuild.result == null || currentBuild.result == 'SUCCESS') &&
+                    env.APP_CODE_CHANGED == 'true'
                 }
             }
             steps {
