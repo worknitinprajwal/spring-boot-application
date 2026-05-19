@@ -690,7 +690,9 @@ EOF
         stage('Run Tests in Parallel') {
             when {
                 expression {
-                    currentBuild.result == null || currentBuild.result == 'SUCCESS'
+                    // Only run tests if deployment happened (app code changed)
+                    (currentBuild.result == null || currentBuild.result == 'SUCCESS') &&
+                    env.APP_CODE_CHANGED == 'true'
                 }
             }
             parallel {
