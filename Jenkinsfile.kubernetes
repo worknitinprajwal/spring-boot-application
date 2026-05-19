@@ -393,20 +393,14 @@ SARIF_EOF
 
                             archiveArtifacts artifacts: 'build-artifacts/aikido-scan.sarif', allowEmptyArchive: true
 
-                            // Register with CloudBees Unify using recordCoverage (supports SARIF)
+                            // Register security scan with CloudBees Unify
                             try {
-                                if (fileExists('build-artifacts/aikido-scan.sarif')) {
-                                    recordCoverage(
-                                        tools: [[parser: 'SARIF', pattern: 'build-artifacts/aikido-scan.sarif']],
-                                        id: 'aikido-security',
-                                        name: 'Aikido Security Scan'
-                                    )
-                                    echo "✅ Aikido scan results registered with CloudBees Unify via recordCoverage"
-                                } else {
-                                    echo "⚠️  Aikido SARIF file not found - skipping registration"
+                                if (fileExists('build-artifacts/aikido-scan-details.json')) {
+                                    registerSecurityScan(scanner: 'Aikido Security')
+                                    echo "✅ Aikido scan results registered with CloudBees Unify"
                                 }
                             } catch (Exception e) {
-                                echo "⚠️  Warning: Failed to register Aikido scan: ${e.message}"
+                                echo "ℹ️  Aikido scan archived (Unify registration unavailable)"
                             }
                         }
                     }
@@ -1354,20 +1348,14 @@ SARIF_EOF
 
                                     archiveArtifacts artifacts: 'build-artifacts/zap-reports/zap-scan.sarif', allowEmptyArchive: true
 
-                                    // Register with CloudBees Unify using recordCoverage (supports SARIF)
+                                    // Register security scan with CloudBees Unify
                                     try {
-                                        if (fileExists('build-artifacts/zap-reports/zap-scan.sarif')) {
-                                            recordCoverage(
-                                                tools: [[parser: 'SARIF', pattern: 'build-artifacts/zap-reports/zap-scan.sarif']],
-                                                id: 'owasp-zap',
-                                                name: 'OWASP ZAP Security Scan'
-                                            )
-                                            echo "✅ OWASP ZAP scan results registered with CloudBees Unify via recordCoverage"
-                                        } else {
-                                            echo "⚠️  ZAP SARIF file not found - skipping registration"
+                                        if (fileExists('build-artifacts/zap-reports/baseline-report.json')) {
+                                            registerSecurityScan(scanner: 'OWASP ZAP')
+                                            echo "✅ OWASP ZAP scan results registered with CloudBees Unify"
                                         }
                                     } catch (Exception e) {
-                                        echo "⚠️  Warning: Failed to register ZAP scan: ${e.message}"
+                                        echo "ℹ️  ZAP scan archived (Unify registration unavailable)"
                                     }
                                 }
                             }
