@@ -1756,64 +1756,36 @@ EOF
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         }
         failure {
-            container('maven') {
+            script {
                 echo "❌ Pipeline failed!"
 
-                sh """
-                    echo "Build failed at: \$(date)" >> ${ARTIFACTS_DIR}/failure.log
-                    echo "Stage: ${env.STAGE_NAME}" >> ${ARTIFACTS_DIR}/failure.log || true
-                """
+                def failedStage = env.STAGE_NAME ?: 'Unknown Stage'
+                def buildResult = currentBuild.result ?: 'FAILURE'
+                def buildDuration = currentBuild.durationString ?: 'Unknown'
 
-                archiveArtifacts artifacts: 'build-artifacts/failure.log', allowEmptyArchive: true
+                // Try to write failure log if container is still available
+                try {
+                    container('maven') {
+                        sh """
+                            echo "Build failed at: \$(date)" >> ${ARTIFACTS_DIR}/failure.log
+                            echo "Stage: ${env.STAGE_NAME}" >> ${ARTIFACTS_DIR}/failure.log || true
+                        """
+                        archiveArtifacts artifacts: 'build-artifacts/failure.log', allowEmptyArchive: true
+                    }
+                } catch (Exception e) {
+                    echo "⚠️  Container unavailable for failure log: ${e.message}"
+                }
 
-                script {
-                    try {
-                        echo "Creating Jira ticket for pipeline failure..."
+                // Create Jira ticket using httpRequest (works even if pods are offline)
+                try {
+                    echo "📝 Creating Jira ticket for pipeline failure..."
 
-                        def failedStage = env.STAGE_NAME ?: 'Unknown Stage'
-                        def buildResult = currentBuild.result ?: 'FAILURE'
-                        def buildDuration = currentBuild.durationString ?: 'Unknown'
-
-                        withCredentials([string(credentialsId: 'jira-api-token', variable: 'JIRA_API_TOKEN')]) {
-                            sh """
-                                cat > ${ARTIFACTS_DIR}/failure-details.txt << 'FAILEOF'
-Pipeline Build Failure Report
-
-Build Information:
-- Job: ${JOB_NAME}
-- Build Number: ${BUILD_NUMBER}
-- Branch: ${BRANCH_NAME}
-- Failed Stage: ${failedStage}
-- Build Result: ${buildResult}
-- Duration: ${buildDuration}
-- Build URL: ${BUILD_URL}
-- Timestamp: \$(date -u +%Y-%m-%dT%H:%M:%SZ)
-
-Failure Analysis:
-This build failed during the ${failedStage} stage. Please check:
-1. Console output for specific error messages
-2. Recent code changes
-3. Network connectivity issues
-4. ArgoCD synchronization status
-5. Target cluster accessibility
-
-Links:
-- Console Output: ${BUILD_URL}console
-- Build Artifacts: ${BUILD_URL}artifact/
-- Test Reports: ${BUILD_URL}testReport/
-
-Action Items:
-1. Review console output for errors
-2. Check if this is a recurring failure
-3. Verify all external dependencies are accessible
-FAILEOF
-
-                                # Create Jira payload with proper ADF (Atlassian Document Format)
-                                cat > ${ARTIFACTS_DIR}/jira-payload.json << 'JSONEOF'
+                    withCredentials([string(credentialsId: 'jira-api-token', variable: 'JIRA_API_TOKEN')]) {
+                        def jiraPayload = """
 {
   "fields": {
     "project": { "key": "CBDEMO" },
-    "summary": "Pipeline Failed: FITNESS_TRACKER_PLACEHOLDER",
+    "summary": "Pipeline Failed: ${JOB_NAME} #${BUILD_NUMBER}",
     "description": {
       "type": "doc",
       "version": 1,
@@ -1831,11 +1803,11 @@ FAILEOF
         {
           "type": "bulletList",
           "content": [
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Job: JOB_PLACEHOLDER"}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Build Number: BUILD_NUM_PLACEHOLDER"}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Branch: BRANCH_PLACEHOLDER"}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Failed Stage: STAGE_PLACEHOLDER"}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Duration: DURATION_PLACEHOLDER"}]}]}
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Job: ${JOB_NAME}"}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Build Number: ${BUILD_NUMBER}"}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Branch: ${BRANCH_NAME}"}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Failed Stage: ${failedStage}"}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Duration: ${buildDuration}"}]}]}
           ]
         },
         {
@@ -1845,7 +1817,7 @@ FAILEOF
         },
         {
           "type": "paragraph",
-          "content": [{"type": "text", "text": "This build failed during the STAGE_PLACEHOLDER stage. Please check:"}]
+          "content": [{"type": "text", "text": "This build failed during the ${failedStage} stage. Please check:"}]
         },
         {
           "type": "orderedList",
@@ -1854,7 +1826,8 @@ FAILEOF
             {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Recent code changes that may have introduced issues"}]}]},
             {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Network connectivity or timeout issues"}]}]},
             {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "ArgoCD synchronization status"}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Target cluster accessibility"}]}]}
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Target cluster accessibility"}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Kubernetes pod stability (check if pods went offline)"}]}]}
           ]
         },
         {
@@ -1865,51 +1838,126 @@ FAILEOF
         {
           "type": "bulletList",
           "content": [
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Console Output: ", "marks": [{"type": "strong"}]}, {"type": "text", "text": "CONSOLE_URL_PLACEHOLDER", "marks": [{"type": "link", "attrs": {"href": "CONSOLE_URL_PLACEHOLDER"}}]}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Build Artifacts: ", "marks": [{"type": "strong"}]}, {"type": "text", "text": "ARTIFACTS_URL_PLACEHOLDER", "marks": [{"type": "link", "attrs": {"href": "ARTIFACTS_URL_PLACEHOLDER"}}]}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Test Reports: ", "marks": [{"type": "strong"}]}, {"type": "text", "text": "TEST_URL_PLACEHOLDER", "marks": [{"type": "link", "attrs": {"href": "TEST_URL_PLACEHOLDER"}}]}]}]}
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Console Output: ", "marks": [{"type": "strong"}]}, {"type": "text", "text": "${BUILD_URL}console", "marks": [{"type": "link", "attrs": {"href": "${BUILD_URL}console"}}]}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Build Artifacts: ", "marks": [{"type": "strong"}]}, {"type": "text", "text": "${BUILD_URL}artifact/", "marks": [{"type": "link", "attrs": {"href": "${BUILD_URL}artifact/"}}]}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Test Reports: ", "marks": [{"type": "strong"}]}, {"type": "text", "text": "${BUILD_URL}testReport/", "marks": [{"type": "link", "attrs": {"href": "${BUILD_URL}testReport/"}}]}]}]}
           ]
         }
       ]
     },
     "issuetype": { "name": "Task" },
     "priority": { "name": "High" },
-    "labels": ["ci-cd", "pipeline-failure", "automated", "BRANCH_LABEL"]
+    "labels": ["ci-cd", "pipeline-failure", "automated", "${BRANCH_NAME}"]
+  }
+}
+"""
+
+                        def response = httpRequest(
+                            url: "${JIRA_SITE}/rest/api/3/issue",
+                            httpMode: 'POST',
+                            contentType: 'APPLICATION_JSON',
+                            requestBody: jiraPayload,
+                            authentication: 'jira-api-token-username-password',
+                            validResponseCodes: '200:299,400:499'
+                        )
+
+                        if (response.status >= 200 && response.status < 300) {
+                            def jsonResponse = readJSON text: response.content
+                            def issueKey = jsonResponse.key
+                            echo "✅ Jira ticket created: ${JIRA_SITE}/browse/${issueKey}"
+                        } else {
+                            echo "⚠️  Jira API returned status ${response.status}: ${response.content}"
+                        }
+                    }
+                } catch (Exception e) {
+                    echo "⚠️  Failed to create Jira ticket: ${e.message}"
+                    echo "This may require the HTTP Request plugin to be installed"
+
+                    // Fallback: Try curl if httpRequest plugin not available
+                    try {
+                        echo "Trying curl-based fallback for Jira ticket creation..."
+                        withCredentials([string(credentialsId: 'jira-api-token', variable: 'JIRA_API_TOKEN')]) {
+                            sh """
+                                # Create Jira payload (using /tmp to avoid container dependency)
+                                cat > /tmp/jira-payload-${BUILD_NUMBER}.json << 'JSONEOF'
+{
+  "fields": {
+    "project": { "key": "CBDEMO" },
+    "summary": "Pipeline Failed: ${JOB_NAME} #${BUILD_NUMBER}",
+    "description": {
+      "type": "doc",
+      "version": 1,
+      "content": [
+        {
+          "type": "heading",
+          "attrs": {"level": 2},
+          "content": [{"type": "text", "text": "Pipeline Build Failure Report"}]
+        },
+        {
+          "type": "heading",
+          "attrs": {"level": 3},
+          "content": [{"type": "text", "text": "Build Information"}]
+        },
+        {
+          "type": "bulletList",
+          "content": [
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Job: ${JOB_NAME}"}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Build Number: ${BUILD_NUMBER}"}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Branch: ${BRANCH_NAME}"}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Failed Stage: ${failedStage}"}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Duration: ${buildDuration}"}]}]}
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {"level": 3},
+          "content": [{"type": "text", "text": "Links"}]
+        },
+        {
+          "type": "bulletList",
+          "content": [
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Console Output: ", "marks": [{"type": "strong"}]}, {"type": "text", "text": "${BUILD_URL}console", "marks": [{"type": "link", "attrs": {"href": "${BUILD_URL}console"}}]}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Build Artifacts: ", "marks": [{"type": "strong"}]}, {"type": "text", "text": "${BUILD_URL}artifact/", "marks": [{"type": "link", "attrs": {"href": "${BUILD_URL}artifact/"}}]}]}]},
+            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Test Reports: ", "marks": [{"type": "strong"}]}, {"type": "text", "text": "${BUILD_URL}testReport/", "marks": [{"type": "link", "attrs": {"href": "${BUILD_URL}testReport/"}}]}]}]}
+          ]
+        }
+      ]
+    },
+    "issuetype": { "name": "Task" },
+    "priority": { "name": "High" },
+    "labels": ["ci-cd", "pipeline-failure", "automated", "${BRANCH_NAME}", "pod-failure"]
   }
 }
 JSONEOF
 
-                                # Replace all placeholders
-                                sed -i "s|FITNESS_TRACKER_PLACEHOLDER|${JOB_NAME} #${BUILD_NUMBER}|g" ${ARTIFACTS_DIR}/jira-payload.json
-                                sed -i "s|JOB_PLACEHOLDER|${JOB_NAME}|g" ${ARTIFACTS_DIR}/jira-payload.json
-                                sed -i "s|BUILD_NUM_PLACEHOLDER|${BUILD_NUMBER}|g" ${ARTIFACTS_DIR}/jira-payload.json
-                                sed -i "s|BRANCH_PLACEHOLDER|${BRANCH_NAME}|g" ${ARTIFACTS_DIR}/jira-payload.json
-                                sed -i "s|STAGE_PLACEHOLDER|${failedStage}|g" ${ARTIFACTS_DIR}/jira-payload.json
-                                sed -i "s|DURATION_PLACEHOLDER|${buildDuration}|g" ${ARTIFACTS_DIR}/jira-payload.json
-                                sed -i "s|CONSOLE_URL_PLACEHOLDER|${BUILD_URL}console|g" ${ARTIFACTS_DIR}/jira-payload.json
-                                sed -i "s|ARTIFACTS_URL_PLACEHOLDER|${BUILD_URL}artifact/|g" ${ARTIFACTS_DIR}/jira-payload.json
-                                sed -i "s|TEST_URL_PLACEHOLDER|${BUILD_URL}testReport/|g" ${ARTIFACTS_DIR}/jira-payload.json
-                                sed -i "s|BRANCH_LABEL|${BRANCH_NAME}|g" ${ARTIFACTS_DIR}/jira-payload.json
-
-                                echo "📝 Creating Jira ticket with detailed failure information..."
-                                curl -X POST \\
+                                echo "📝 Creating Jira ticket with curl fallback..."
+                                RESPONSE=\$(curl -X POST \\
                                   -H "Content-Type: application/json" \\
-                                  -u "\${JIRA_EMAIL}:\${JIRA_API_TOKEN}" \\
-                                  -d @\${ARTIFACTS_DIR}/jira-payload.json \\
-                                  "\${JIRA_SITE}/rest/api/3/issue" \\
-                                  -o \${ARTIFACTS_DIR}/jira-response.json \\
-                                  -w "HTTP Status: %{http_code}\\n"
+                                  -u "${JIRA_EMAIL}:\${JIRA_API_TOKEN}" \\
+                                  -d @/tmp/jira-payload-${BUILD_NUMBER}.json \\
+                                  "${JIRA_SITE}/rest/api/3/issue" \\
+                                  -w "\\nHTTP_STATUS:%{http_code}" -s)
 
-                                ISSUE_KEY=\$(cat \${ARTIFACTS_DIR}/jira-response.json | grep -o '"key":"[^"]*"' | head -1 | cut -d'"' -f4)
-                                if [ -n "\$ISSUE_KEY" ]; then
-                                    echo "✅ Jira ticket created: \${JIRA_SITE}/browse/\$ISSUE_KEY"
+                                HTTP_CODE=\$(echo "\$RESPONSE" | grep -o 'HTTP_STATUS:[0-9]*' | cut -d: -f2)
+                                ISSUE_KEY=\$(echo "\$RESPONSE" | grep -o '"key":"[^"]*"' | head -1 | cut -d'"' -f4)
+
+                                if [ "\$HTTP_CODE" = "201" ] && [ -n "\$ISSUE_KEY" ]; then
+                                    echo "✅ Jira ticket created: ${JIRA_SITE}/browse/\$ISSUE_KEY"
+                                else
+                                    echo "⚠️  Jira API returned HTTP \$HTTP_CODE"
                                 fi
+
+                                # Cleanup
+                                rm -f /tmp/jira-payload-${BUILD_NUMBER}.json
                             """
                         }
                     } catch (Exception e) {
-                        echo "⚠️ Failed to create Jira ticket: ${e.message}"
+                        echo "⚠️  Curl fallback also failed: ${e.message}"
+                        echo "Unable to create Jira ticket automatically. Please create manually if needed."
                     }
                 }
+            }
+        }
             }
         }
     }
