@@ -356,19 +356,10 @@ COMMIT_MSG_EOF
                             archiveArtifacts artifacts: 'build-artifacts/aikido-scan-output.txt', allowEmptyArchive: true
                             archiveArtifacts artifacts: 'build-artifacts/aikido-scan-details*.json', allowEmptyArchive: true
 
-                            // Register Aikido security scan with CloudBees Unify
-                            try {
-                                if (fileExists('build-artifacts/aikido-scan-details.json')) {
-                                    registerSecurityScan(
-                                        scanner: 'Aikido Security'
-                                    )
-                                    echo "✅ Aikido scan results registered with CloudBees Unify"
-                                } else {
-                                    echo "⚠️  Aikido scan results file not found - skipping registration"
-                                }
-                            } catch (Exception e) {
-                                echo "⚠️  Warning: Failed to register Aikido scan: ${e.message}"
-                            }
+                            // Note: CloudBees registerSecurityScan requires SARIF format
+                            // Aikido outputs JSON format, so registration is skipped
+                            // Scan results are archived in build-artifacts/aikido-scan-details.json
+                            echo "ℹ️  Aikido scan results archived (CloudBees registration skipped - requires SARIF format)"
                         }
                     }
                 }
@@ -1279,19 +1270,10 @@ SUMMARYEOF
                                         reportName: 'OWASP ZAP Security Report'
                                     ])
 
-                                    // Register OWASP ZAP security scan with CloudBees Unify
-                                    try {
-                                        if (fileExists('build-artifacts/zap-reports/baseline-report.json')) {
-                                            registerSecurityScan(
-                                                scanner: 'OWASP ZAP'
-                                            )
-                                            echo "✅ OWASP ZAP scan results registered with CloudBees Unify"
-                                        } else {
-                                            echo "⚠️  OWASP ZAP scan results file not found - skipping registration"
-                                        }
-                                    } catch (Exception e) {
-                                        echo "⚠️  Warning: Failed to register ZAP scan: ${e.message}"
-                                    }
+                                    // Note: CloudBees registerSecurityScan requires SARIF format
+                                    // ZAP outputs JSON/HTML format, so registration is skipped
+                                    // Scan results are archived in build-artifacts/zap-reports/
+                                    echo "ℹ️  OWASP ZAP scan results archived (CloudBees registration skipped - requires SARIF format)"
                                 }
                             }
                         }
