@@ -164,6 +164,48 @@ spec:
                             error('Build skipped by [skip ci] tag in commit message')
                         }
 
+                        // Check what files changed to determine if we should build
+                        def changedFiles = sh(
+                            script: "git diff --name-only HEAD~1 HEAD || echo 'ALL'",
+                            returnStdout: true
+                        ).trim()
+
+                        echo "📝 Changed files:\n${changedFiles}"
+
+                        // Determine if application code changed
+                        def appCodeChanged = false
+                        def helmConfigChanged = false
+
+                        changedFiles.split('\n').each { file ->
+                            if (file.startsWith('src/') ||
+                                file.startsWith('pom.xml') ||
+                                file.startsWith('Dockerfile') ||
+                                file == 'ALL') {
+                                appCodeChanged = true
+                            }
+                            if (file.startsWith('k8s/') ||
+                                file.startsWith('argocd/') ||
+                                file.startsWith('helm/')) {
+                                helmConfigChanged = true
+                            }
+                        }
+
+                        env.APP_CODE_CHANGED = appCodeChanged.toString()
+                        env.HELM_CONFIG_CHANGED = helmConfigChanged.toString()
+
+                        echo "🔍 Change Analysis:"
+                        echo "  - Application code changed: ${env.APP_CODE_CHANGED}"
+                        echo "  - Helm/K8s config changed: ${env.HELM_CONFIG_CHANGED}"
+
+                        // If only helm/k8s configs changed, skip the build
+                        if (!appCodeChanged && helmConfigChanged) {
+                            echo "⏭️  Skipping build - only Helm/K8s configs changed (no app code changes)"
+                            echo "💡 ArgoCD will automatically sync these config changes"
+                            currentBuild.result = 'NOT_BUILT'
+                            currentBuild.description = "Config-only change (ArgoCD sync)"
+                            error('Build skipped - no application code changes detected')
+                        }
+
                         // Write commit info, escaping special characters in commit message
                         sh """
                             echo "Commit: ${env.GIT_COMMIT_SHORT}" >> ${ARTIFACTS_DIR}/build-info.txt
@@ -337,7 +379,13 @@ COMMIT_MSG_EOF
 
         stage('Docker Build & Push') {
             when {
-                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
+                expression {
+                    // Only build Docker image if:
+                    // 1. Previous stages succeeded
+                    // 2. Application code actually changed (not just config files)
+                    (currentBuild.result == null || currentBuild.result == 'SUCCESS') &&
+                    env.APP_CODE_CHANGED == 'true'
+                }
             }
             steps {
                 container('kaniko') {
