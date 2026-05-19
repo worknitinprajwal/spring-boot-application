@@ -1759,9 +1759,42 @@ EOF
             script {
                 echo "❌ Pipeline failed!"
 
-                def failedStage = env.STAGE_NAME ?: 'Unknown Stage'
+                // Extract actual failure information from build
+                def failedStage = 'Unknown Stage'
+                def failureReason = 'Check console output for details'
+
+                try {
+                    // Get the actual failed stage from build result
+                    def causes = currentBuild.rawBuild.getAction(jenkins.model.CauseAction)?.causes
+
+                    // Try to find failed stages from the build's execution
+                    def execution = currentBuild.rawBuild.getExecution()
+                    if (execution) {
+                        def flowNodes = execution.getCurrentHeads()
+                        flowNodes.each { node ->
+                            def error = node.getError()
+                            if (error) {
+                                def enclosingStage = node.getEnclosingBlocks()?.find {
+                                    it.class.name.contains('StageNode')
+                                }
+                                if (enclosingStage) {
+                                    failedStage = enclosingStage.getDisplayName()
+                                    failureReason = error.getMessage() ?: error.toString()
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    echo "⚠️  Could not extract detailed failure info: ${e.message}"
+                    failedStage = env.STAGE_NAME ?: 'Unknown Stage'
+                }
+
                 def buildResult = currentBuild.result ?: 'FAILURE'
                 def buildDuration = currentBuild.durationString ?: 'Unknown'
+
+                echo "📊 Failure Details:"
+                echo "  - Failed Stage: ${failedStage}"
+                echo "  - Reason: ${failureReason}"
 
                 // Try to write failure log if container is still available
                 try {
@@ -1781,11 +1814,17 @@ EOF
                     echo "📝 Creating Jira ticket for pipeline failure..."
 
                     withCredentials([string(credentialsId: 'jira-api-token', variable: 'JIRA_API_TOKEN')]) {
+                        // Escape special characters for JSON
+                        def escapedReason = failureReason.replaceAll('"', '\\\\"').replaceAll('\n', ' ').replaceAll('\r', '')
+                        if (escapedReason.length() > 200) {
+                            escapedReason = escapedReason.substring(0, 200) + "..."
+                        }
+
                         def jiraPayload = """
 {
   "fields": {
     "project": { "key": "CBDEMO" },
-    "summary": "Pipeline Failed: ${JOB_NAME} #${BUILD_NUMBER}",
+    "summary": "Pipeline Failed: ${JOB_NAME} #${BUILD_NUMBER} - ${failedStage}",
     "description": {
       "type": "doc",
       "version": 1,
@@ -1813,11 +1852,16 @@ EOF
         {
           "type": "heading",
           "attrs": {"level": 3},
-          "content": [{"type": "text", "text": "Failure Analysis"}]
+          "content": [{"type": "text", "text": "Failure Reason"}]
         },
         {
           "type": "paragraph",
-          "content": [{"type": "text", "text": "This build failed during the ${failedStage} stage. Please check:"}]
+          "content": [{"type": "text", "text": "${escapedReason}"}]
+        },
+        {
+          "type": "heading",
+          "attrs": {"level": 3},
+          "content": [{"type": "text", "text": "Recommended Actions"}]
         },
         {
           "type": "orderedList",
@@ -1877,13 +1921,51 @@ EOF
                     try {
                         echo "Trying curl-based fallback for Jira ticket creation..."
                         withCredentials([string(credentialsId: 'jira-api-token', variable: 'JIRA_API_TOKEN')]) {
+                            // Prepare failure details text file first
+                            def failureDetailsText = """
+Pipeline Build Failure Report
+==============================
+
+Build Information:
+- Job: ${JOB_NAME}
+- Build Number: ${BUILD_NUMBER}
+- Branch: ${BRANCH_NAME}
+- Failed Stage: ${failedStage}
+- Build Result: ${buildResult}
+- Duration: ${buildDuration}
+- Build URL: ${BUILD_URL}
+
+Failure Reason:
+${failureReason}
+
+Recommended Actions:
+1. Review console output for specific error messages
+2. Check recent code changes that may have introduced issues
+3. Verify network connectivity and timeout issues
+4. Check ArgoCD synchronization status
+5. Verify target cluster accessibility
+6. Check Kubernetes pod stability
+
+Links:
+- Console Output: ${BUILD_URL}console
+- Build Artifacts: ${BUILD_URL}artifact/
+- Test Reports: ${BUILD_URL}testReport/
+"""
+
+                            // Write to temp file for archiving attempt
+                            try {
+                                writeFile file: '/tmp/failure-details-${BUILD_NUMBER}.txt', text: failureDetailsText
+                            } catch (Exception e) {
+                                echo "Could not write failure details file: ${e.message}"
+                            }
+
                             sh """
                                 # Create Jira payload (using /tmp to avoid container dependency)
                                 cat > /tmp/jira-payload-${BUILD_NUMBER}.json << 'JSONEOF'
 {
   "fields": {
     "project": { "key": "CBDEMO" },
-    "summary": "Pipeline Failed: ${JOB_NAME} #${BUILD_NUMBER}",
+    "summary": "Pipeline Failed: ${JOB_NAME} #${BUILD_NUMBER} - ${failedStage}",
     "description": {
       "type": "doc",
       "version": 1,
@@ -1907,6 +1989,15 @@ EOF
             {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Failed Stage: ${failedStage}"}]}]},
             {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Duration: ${buildDuration}"}]}]}
           ]
+        },
+        {
+          "type": "heading",
+          "attrs": {"level": 3},
+          "content": [{"type": "text", "text": "Failure Reason"}]
+        },
+        {
+          "type": "paragraph",
+          "content": [{"type": "text", "text": "${escapedReason}"}]
         },
         {
           "type": "heading",
