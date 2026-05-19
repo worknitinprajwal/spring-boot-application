@@ -393,15 +393,9 @@ SARIF_EOF
 
                             archiveArtifacts artifacts: 'build-artifacts/aikido-scan.sarif', allowEmptyArchive: true
 
-                            // Register security scan with CloudBees Unify
-                            try {
-                                if (fileExists('build-artifacts/aikido-scan-details.json')) {
-                                    registerSecurityScan(scanner: 'Aikido Security')
-                                    echo "✅ Aikido scan results registered with CloudBees Unify"
-                                }
-                            } catch (Exception e) {
-                                echo "ℹ️  Aikido scan archived (Unify registration unavailable)"
-                            }
+                            echo "ℹ️  Aikido Security scan completed - results archived in build artifacts"
+                            echo "   - JSON Report: build-artifacts/aikido-scan-details.json"
+                            echo "   - SARIF Report: build-artifacts/aikido-scan.sarif"
                         }
                     }
                 }
@@ -1361,15 +1355,10 @@ SARIF_EOF
 
                                     archiveArtifacts artifacts: 'build-artifacts/zap-reports/zap-scan.sarif', allowEmptyArchive: true
 
-                                    // Register security scan with CloudBees Unify
-                                    try {
-                                        if (fileExists('build-artifacts/zap-reports/baseline-report.json')) {
-                                            registerSecurityScan(scanner: 'OWASP ZAP')
-                                            echo "✅ OWASP ZAP scan results registered with CloudBees Unify"
-                                        }
-                                    } catch (Exception e) {
-                                        echo "ℹ️  ZAP scan archived (Unify registration unavailable)"
-                                    }
+                                    echo "ℹ️  OWASP ZAP Security scan completed - results archived in build artifacts"
+                                    echo "   - JSON Report: build-artifacts/zap-reports/baseline-report.json"
+                                    echo "   - SARIF Report: build-artifacts/zap-reports/zap-scan.sarif"
+                                    echo "   - HTML Report: build-artifacts/zap-reports/baseline-report.html"
                                 }
                             }
                         }
