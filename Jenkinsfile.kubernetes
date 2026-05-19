@@ -1784,8 +1784,8 @@ EOF
                             }
                         }
                     }
-                } catch (Exception e) {
-                    echo "⚠️  Could not extract detailed failure info: ${e.message}"
+                } catch (Exception ex1) {
+                    echo "⚠️  Could not extract detailed failure info: ${ex1.message}"
                     failedStage = env.STAGE_NAME ?: 'Unknown Stage'
                 }
 
@@ -1805,8 +1805,8 @@ EOF
                         """
                         archiveArtifacts artifacts: 'build-artifacts/failure.log', allowEmptyArchive: true
                     }
-                } catch (Exception e) {
-                    echo "⚠️  Container unavailable for failure log: ${e.message}"
+                } catch (Exception ex2) {
+                    echo "⚠️  Container unavailable for failure log: ${ex2.message}"
                 }
 
                 // Create Jira ticket using httpRequest (works even if pods are offline)
@@ -1881,8 +1881,8 @@ EOF
                             echo "⚠️  Jira API returned status ${response.status}: ${response.content}"
                         }
                     }
-                } catch (Exception e) {
-                    echo "⚠️  Failed to create Jira ticket: ${e.message}"
+                } catch (Exception ex3) {
+                    echo "⚠️  Failed to create Jira ticket: ${ex3.message}"
                     echo "This may require the HTTP Request plugin to be installed"
 
                     // Fallback: Try curl if httpRequest plugin not available
@@ -1923,8 +1923,8 @@ Links:
                             // Write to temp file for archiving attempt
                             try {
                                 writeFile file: '/tmp/failure-details-${BUILD_NUMBER}.txt', text: failureDetailsText
-                            } catch (Exception e) {
-                                echo "Could not write failure details file: ${e.message}"
+                            } catch (Exception ex4) {
+                                echo "Could not write failure details file: ${ex4.message}"
                             }
 
                             sh """
@@ -1997,8 +1997,8 @@ JSONEOF
                                 rm -f /tmp/jira-payload-${BUILD_NUMBER}.json
                             """
                         }
-                    } catch (Exception e) {
-                        echo "⚠️  Curl fallback also failed: ${e.message}"
+                    } catch (Exception ex5) {
+                        echo "⚠️  Curl fallback also failed: ${ex5.message}"
                         echo "Unable to create Jira ticket automatically. Please create manually if needed."
                     }
                 }
