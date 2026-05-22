@@ -170,17 +170,18 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🏋️ Fitness Tracker - Multi-Cluster GitOps Demo</h1>
+            <h1>🏋️ Fitness Tracker - GitOps E2E Demo</h1>
             <p class="subtitle">Track your workouts, monitor your progress</p>
             <p style="color: #999; font-size: 0.9em; margin-top: 10px;">
-                Version 4.0 | CloudBees CI + ArgoCD + Multi-Cluster Deployment 🚀
+                Version 5.0 | Complete CI/CD + GitOps Workflow 🚀
             </p>
-            <div style="background: #e3f2fd; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #2196f3;">
-                <strong style="color: #1976d2;">🎯 GitOps Pipeline Active</strong><br>
+            <div style="background: #e8f5e9; padding: 15px; border-radius: 8px; margin-top: 15px; border-left: 4px solid #4caf50;">
+                <strong style="color: #2e7d32;">✅ Fully Automated GitOps Pipeline</strong><br>
                 <span style="font-size: 0.9em; color: #555;">
-                    Jenkins (kind-igs) → Docker Hub → ArgoCD → Multi-Cluster Deployment<br>
+                    GitHub → CloudBees CI (kind-igs) → Docker Hub → ArgoCD → Multi-Cluster<br>
                     <code style="background: #fff; padding: 2px 6px; border-radius: 3px;">develop</code> → kind-dev &nbsp;|&nbsp;
-                    <code style="background: #fff; padding: 2px 6px; border-radius: 3px;">main</code> → kind-test
+                    <code style="background: #fff; padding: 2px 6px; border-radius: 3px;">main</code> → kind-test<br>
+                    <em style="font-size: 0.85em; color: #666;">Image tags dynamically updated from Git values.yaml</em>
                 </span>
             </div>
         </div>
