@@ -1866,8 +1866,7 @@ EOF
                     echo "📝 Creating Jira ticket for pipeline failure..."
 
                     container('maven') {
-                        withCredentials([string(credentialsId: 'jira-api-token', variable: 'JIRA_API_TOKEN'),
-                                         string(credentialsId: 'jira-email', variable: 'JIRA_EMAIL')]) {
+                        withCredentials([string(credentialsId: 'jira-api-token', variable: 'JIRA_API_TOKEN')]) {
                         // Escape special characters for JSON - preserve newlines for code block
                         def escapedReason = failureReason.replaceAll('"', '\\\\"').replaceAll('\\\\', '\\\\\\\\')
                         if (escapedReason.length() > 500) {
