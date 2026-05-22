@@ -614,11 +614,11 @@ EOF
                         def ingressPort = env.BRANCH_NAME == 'develop' ? '8081' : '8082'
                         def ingressUrl = "http://${ingressHost}:${ingressPort}"
 
-                        // Query actual NodePort from the service
-                        def clusterIp = env.BRANCH_NAME == 'develop' ? '172.18.0.4' : '172.18.0.6'
-                        def targetContext = env.BRANCH_NAME == 'develop' ? 'kind-kind-dev' : 'kind-kind-test'
+                        // Query actual NodePort from the service using server URL
+                        def clusterIp = env.BRANCH_NAME == 'develop' ? '172.18.0.5' : '172.18.0.8'
+                        def targetServer = env.BRANCH_NAME == 'develop' ? 'https://172.18.0.5:6443' : 'https://172.18.0.8:6443'
                         def actualNodePort = sh(
-                            script: "kubectl --context=${targetContext} -n ${appNamespace} get svc fitness-tracker -o jsonpath='{.spec.ports[0].nodePort}'",
+                            script: "kubectl --server=${targetServer} --token=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/token) --certificate-authority=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt -n ${appNamespace} get svc fitness-tracker -o jsonpath='{.spec.ports[0].nodePort}'",
                             returnStdout: true
                         ).trim()
 
@@ -634,14 +634,14 @@ EOF
                         echo "📍 Load Test URL: ${ingressUrl}"
 
                         sh """
-                            export KUBECONFIG=/root/.kube/config
-
-                            TARGET_CONTEXT="${env.BRANCH_NAME == 'develop' ? 'kind-kind-dev' : 'kind-kind-test'}"
+                            TARGET_SERVER="${targetServer}"
                             TARGET_NAMESPACE="${appNamespace}"
                             EXPECTED_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
+                            SA_TOKEN=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+                            CA_CERT=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 
                             echo "Expected Image: \$EXPECTED_IMAGE"
-                            echo "Target: \$TARGET_CONTEXT / \$TARGET_NAMESPACE"
+                            echo "Target: \$TARGET_SERVER / \$TARGET_NAMESPACE"
 
                             MAX_ATTEMPTS=30
                             ATTEMPT=0
@@ -650,7 +650,7 @@ EOF
                                 ATTEMPT=\$((ATTEMPT + 1))
                                 echo "[\$ATTEMPT/\$MAX_ATTEMPTS] Checking deployment..."
 
-                                RUNNING_IMAGE=\$(kubectl --context=\$TARGET_CONTEXT -n \$TARGET_NAMESPACE get pods -l app=fitness-tracker -o jsonpath='{.items[0].spec.containers[0].image}' 2>/dev/null || echo "")
+                                RUNNING_IMAGE=\$(kubectl --server=\$TARGET_SERVER --token=\$SA_TOKEN --certificate-authority=\$CA_CERT -n \$TARGET_NAMESPACE get pods -l app=fitness-tracker -o jsonpath='{.items[0].spec.containers[0].image}' 2>/dev/null || echo "")
 
                                 echo "  Running Image: \$RUNNING_IMAGE"
 
@@ -1850,11 +1850,13 @@ EOF
                     echo "⚠️  Container unavailable for failure log: ${ex2.message}"
                 }
 
-                // Create Jira ticket using httpRequest (works even if pods are offline)
+                // Create Jira ticket using curl (works even if pods are offline)
                 try {
                     echo "📝 Creating Jira ticket for pipeline failure..."
 
-                    withCredentials([string(credentialsId: 'jira-api-token', variable: 'JIRA_API_TOKEN')]) {
+                    container('maven') {
+                        withCredentials([string(credentialsId: 'jira-api-token', variable: 'JIRA_API_TOKEN'),
+                                         string(credentialsId: 'jira-email', variable: 'JIRA_EMAIL')]) {
                         // Escape special characters for JSON - preserve newlines for code block
                         def escapedReason = failureReason.replaceAll('"', '\\\\"').replaceAll('\\\\', '\\\\\\\\')
                         if (escapedReason.length() > 500) {
@@ -1905,31 +1907,44 @@ EOF
 }
 """
 
-                        def response = httpRequest(
-                            url: "${JIRA_SITE}/rest/api/3/issue",
-                            httpMode: 'POST',
-                            contentType: 'APPLICATION_JSON',
-                            requestBody: jiraPayload,
-                            authentication: 'jira-api-token-username-password',
-                            validResponseCodes: '200:299,400:499'
-                        )
+                            // Write payload to file
+                            writeFile file: 'jira-payload.json', text: jiraPayload
 
-                        if (response.status >= 200 && response.status < 300) {
-                            def jsonResponse = readJSON text: response.content
-                            def issueKey = jsonResponse.key
-                            echo "✅ Jira ticket created: ${JIRA_SITE}/browse/${issueKey}"
-                        } else {
-                            echo "⚠️  Jira API returned status ${response.status}: ${response.content}"
+                            // Use curl to create the ticket
+                            def curlResult = sh(
+                                script: """
+                                    curl -s -w "\\n%{http_code}" \\
+                                        -X POST \\
+                                        -H "Content-Type: application/json" \\
+                                        -u "\${JIRA_EMAIL}:\${JIRA_API_TOKEN}" \\
+                                        -d @jira-payload.json \\
+                                        "${JIRA_SITE}/rest/api/3/issue"
+                                """,
+                                returnStdout: true
+                            ).trim()
+
+                            def lines = curlResult.split('\n')
+                            def httpCode = lines[-1]
+                            def responseBody = lines[0..-2].join('\n')
+
+                            if (httpCode.startsWith('20')) {
+                                def jsonResponse = readJSON text: responseBody
+                                def issueKey = jsonResponse.key
+                                echo "✅ Jira ticket created: ${JIRA_SITE}/browse/${issueKey}"
+                            } else {
+                                echo "⚠️  Jira API returned status ${httpCode}"
+                                echo "Response: ${responseBody}"
+                            }
                         }
                     }
                 } catch (Exception ex3) {
                     echo "⚠️  Failed to create Jira ticket: ${ex3.message}"
-                    echo "This may require the HTTP Request plugin to be installed"
 
-                    // Fallback: Try curl if httpRequest plugin not available
+                    // Final fallback: Try without container wrapper
                     try {
-                        echo "Trying curl-based fallback for Jira ticket creation..."
-                        withCredentials([string(credentialsId: 'jira-api-token', variable: 'JIRA_API_TOKEN')]) {
+                        echo "Trying final fallback for Jira ticket creation..."
+                        withCredentials([string(credentialsId: 'jira-api-token', variable: 'JIRA_API_TOKEN'),
+                                         string(credentialsId: 'jira-email', variable: 'JIRA_EMAIL')]) {
                             // Prepare failure details text file first
                             def failureDetailsText = """
 Pipeline Build Failure Report
