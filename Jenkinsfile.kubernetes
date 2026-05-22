@@ -6,6 +6,7 @@
 pipeline {
     agent {
         kubernetes {
+            cloud 'k8s'  // Reference your Kubernetes cloud name
             label 'maven-jdk17'
             yaml """
 apiVersion: v1
@@ -14,6 +15,7 @@ metadata:
   labels:
     jenkins: agent
 spec:
+  serviceAccountName: jenkins-agent
   containers:
   - name: maven
     image: maven:3.9-eclipse-temurin-21
