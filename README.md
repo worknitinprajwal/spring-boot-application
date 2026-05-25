@@ -1,15 +1,18 @@
 # Fitness Tracker - Sample Spring Boot Application
 
-A sample Spring Boot REST API for tracking fitness workouts, demonstrating complete CI/CD with CloudBees CI, ArgoCD, and comprehensive testing.
+A sample Spring Boot REST API for tracking fitness workouts, demonstrating complete GitOps CI/CD with CloudBees CI, ArgoCD multi-cluster deployment, and comprehensive automated testing.
 
 ## Features
 
 - REST API for managing workouts (CRUD operations)
-- Spring Boot Actuator for health checks
+- Spring Boot Actuator for health checks and monitoring
 - H2 in-memory database
-- Docker containerized
-- Kubernetes Helm chart
-- Complete CI/CD pipeline with testing
+- Docker containerized with multi-stage builds
+- Kubernetes Helm chart deployment
+- **Complete GitOps CI/CD pipeline** with CloudBees CI + ArgoCD
+- **Multi-cluster deployment** (dev → test → prod)
+- **Automated testing** (Unit, Functional, Performance, Security)
+- **Jira integration** for automated issue tracking
 
 ## API Endpoints
 
@@ -61,24 +64,49 @@ helm upgrade fitness-tracker k8s/helm-chart --namespace dev
 helm uninstall fitness-tracker --namespace dev
 ```
 
-## CI/CD Pipeline
+## GitOps CI/CD Pipeline
 
-The Jenkins pipeline (`Jenkinsfile`) includes:
+### Architecture
 
-1. **Build & Test** - Maven build with unit tests
-2. **Docker Build & Push** - Build image and push to DockerHub
-3. **Update Helm Chart** - Update values.yaml with new image tag
-4. **Deploy** - Deploy to selected environment (dev/test/prod)
-5. **API Tests** - SoapUI functional testing
-6. **Performance Tests** - JMeter load testing (optional)
-7. **Security Scan** - OWASP ZAP security scanning
-8. **Publish Reports** - Send results to CloudBees Unify
+```
+GitHub Push → Webhook → CloudBees CI (kind-igs)
+    ↓
+Build & Test → Docker Hub → Update Git values.yaml
+    ↓
+ArgoCD Detects Change → Multi-Cluster Sync
+    ↓
+kind-dev (develop) | kind-test (main)
+```
 
-### Pipeline Parameters
+### Pipeline Stages (Jenkinsfile.kubernetes)
 
-- `DEPLOY_ENV`: Choose deployment environment (dev/test/prod)
-- `RUN_SECURITY_SCAN`: Enable/disable ZAP security scan
-- `RUN_PERFORMANCE_TEST`: Enable/disable JMeter performance test
+1. **Setup & Checkout** - Clone repository, detect changes
+2. **Build & Test** - Maven build with JUnit tests
+3. **Aikido Security Scan** - Dependency vulnerability scanning
+4. **Docker Build & Push** - Build image with build-specific tag, push to DockerHub
+5. **Update Helm Chart** - Commit new image tag to Git values.yaml
+6. **ArgoCD Deployment** - Trigger ArgoCD sync to target cluster
+7. **Verify ArgoCD Sync** - Wait for ArgoCD to sync successfully
+8. **Wait for Deployment** - Verify pods running with correct image
+9. **Run Tests in Parallel** - SoapUI API + JMeter performance + ZAP security tests
+10. **Collect Build Artifacts** - Archive test results and reports
+11. **Publish to CloudBees Unify** - Send metrics and results
+12. **Jira Integration** - Auto-create ticket on pipeline failure
+
+### Branch Strategy
+
+| Branch | ArgoCD App | Target Cluster | Image Tag Pattern |
+|--------|------------|----------------|-------------------|
+| `develop` | fitness-tracker-dev | kind-dev (172.18.0.5:6443) | `develop-{BUILD_NUMBER}` |
+| `main` | fitness-tracker-test | kind-test (172.18.0.8:6443) | `main-{BUILD_NUMBER}` |
+
+### Key Features
+
+- **Automated GitOps**: ArgoCD reads image tags from Git, no manual intervention
+- **Multi-cluster**: Single ArgoCD on kind-igs manages deployments to multiple clusters
+- **Dynamic Tagging**: Each build creates unique image tag (e.g., `develop-5`, `main-12`)
+- **Failure Tracking**: Automatic Jira ticket creation on pipeline failures
+- **Comprehensive Testing**: Parallel execution of API, performance, and security tests
 
 ## Testing
 
@@ -115,56 +143,96 @@ curl 'http://zap.zap.svc.cluster.local:8080/JSON/ascan/action/scan/?url=http://f
 curl 'http://zap.zap.svc.cluster.local:8080/JSON/core/view/alerts/'
 ```
 
-## Multi-Cluster Deployment
+## Multi-Cluster GitOps Deployment
 
-The application can be deployed to multiple Kubernetes clusters:
+### Cluster Architecture
 
-- **kind-dev**: Development environment
-- **kind-test**: QA/Testing environment
-- **kind-igs**: Production environment
+| Cluster | Purpose | Context | Server URL | Deployed From |
+|---------|---------|---------|------------|---------------|
+| **kind-igs** | CI/CD Control Plane | kind-igs | 172.18.0.2:6443 | CloudBees CI + ArgoCD running here |
+| **kind-dev** | Development | kind-kind-dev | 172.18.0.5:6443 | `develop` branch via ArgoCD |
+| **kind-test** | QA/Testing | kind-kind-test | 172.18.0.8:6443 | `main` branch via ArgoCD |
 
-ArgoCD manages deployments with GitOps approach.
+### ArgoCD Configuration
 
-See [MULTI-CLUSTER-ARGOCD-SETUP.md](../MULTI-CLUSTER-ARGOCD-SETUP.md) for details.
+ArgoCD running on **kind-igs** manages applications on **kind-dev** and **kind-test**:
+
+```bash
+# View registered clusters
+argocd cluster list
+
+# Check application status
+argocd app get fitness-tracker-dev
+argocd app get fitness-tracker-test
+
+# Manual sync (if needed)
+argocd app sync fitness-tracker-dev
+```
+
+**ArgoCD UI**: https://backspin-feline-pesticide.ngrok-free.dev/argocd  
+**Credentials**: admin / GJIRlUm5H-YShZnM
+
+### How It Works
+
+1. **Developer pushes** to `develop` or `main` branch
+2. **GitHub webhook** triggers Jenkins build on kind-igs
+3. **Jenkins builds** Docker image with unique tag (e.g., `main-5`)
+4. **Jenkins pushes** image to Docker Hub
+5. **Jenkins updates** `k8s/helm-chart/values.yaml` in Git with new tag
+6. **ArgoCD detects** Git change automatically (polls every 3 minutes)
+7. **ArgoCD syncs** to target cluster using Helm chart from Git
+8. **Kubernetes deploys** pods with the new image tag
+9. **Pipeline verifies** deployment health and runs tests
+
+### GitOps Best Practices
+
+✅ **Single Source of Truth**: Git repository contains desired state  
+✅ **Declarative Configuration**: Helm charts define application state  
+✅ **Automated Sync**: ArgoCD continuously reconciles cluster state with Git  
+✅ **Audit Trail**: All changes tracked via Git commits  
+✅ **Rollback**: Easy rollback by reverting Git commits
+
+See [ARGOCD-ACCESS-GUIDE.md](../ARGOCD-ACCESS-GUIDE.md) and [create-argocd-apps.sh](../create-argocd-apps.sh) for setup details.
 
 ## Configuration
 
-### DockerHub Credentials
+### Required Jenkins Credentials
 
-Create Jenkins credential with ID: `dockerhub-credentials`
+| Credential ID | Type | Purpose |
+|---------------|------|---------|
+| `DOCKERHUB_PASSWORD` | Secret text | Docker Hub authentication |
+| `GITHUB_TOKEN` | Secret text | Git push authentication |
+| `GITHUB_USERNAME` | Secret text | Git username |
+| `AIKIDO_API_KEY` | Secret text | Aikido security scanning |
+| `jira-api-token` | Secret text | Jira ticket creation on failures |
 
-```bash
-# In Jenkins: Manage Jenkins → Credentials → Add Credentials
-# Type: Username with password
-# ID: dockerhub-credentials
-# Username: your-dockerhub-username
-# Password: your-dockerhub-token
-```
+### Git Commit with Jira Ticket
 
-### GitHub Credentials
-
-Create Jenkins credential with ID: `github-credentials`
+Link commits to Jira issues for traceability:
 
 ```bash
-# In Jenkins: Manage Jenkins → Credentials → Add Credentials
-# Type: Username with password
-# ID: github-credentials
-# Username: your-github-username
-# Password: your-github-token
+git commit -m "CBDEMO-123: implement new feature"
+git push origin main
 ```
 
-### Update Jenkinsfile
+This creates automatic links in Jira between tickets and code changes.
 
-1. Change `DOCKER_REPO` to your DockerHub username
-2. Change Git push URL to your repository
-3. Adjust cluster contexts if needed
+### Update Configuration Files
 
-### Update Helm values.yaml
+**Jenkinsfile.kubernetes** - Update these variables:
+```groovy
+DOCKER_REPO = 'anuddeeph2'  // Your Docker Hub username
+JIRA_SITE = 'https://cloudbees.atlassian.net'
+JIRA_PROJECT_KEY = 'CBDEMO'
+JIRA_EMAIL = 'your-email@example.com'
+```
 
+**k8s/helm-chart/values.yaml** - Image repository:
 ```yaml
 image:
-  repository: your-dockerhub-username/fitness-tracker
-  tag: latest
+  repository: anuddeeph2/sample-spring-boot-app  // Your Docker Hub repo
+  tag: develop-1  # Managed by Jenkins, don't edit manually
+  pullPolicy: Always
 ```
 
 ## Project Structure
