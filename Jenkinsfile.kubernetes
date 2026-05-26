@@ -488,18 +488,18 @@ SARIF_EOF
                                     if (e.message.contains("unable to retrieve run details") ||
                                         e.message.contains("check that the component has been created")) {
                                         echo ""
-                                        echo "❌ COMPONENT NOT FOUND IN CLOUDBEES UNIFY"
-                                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                                        echo ">>> COMPONENT NOT FOUND IN CLOUDBEES UNIFY <<<"
+                                        echo "=========================================="
                                         echo "To fix this:"
                                         echo "1. Log into CloudBees Unify"
-                                        echo "2. Navigate to: Components → Create Component"
+                                        echo "2. Navigate to: Components -> Create Component"
                                         echo "3. Create component:"
                                         echo "   - Name: fitness-tracker"
                                         echo "   - Repository: https://github.com/anuddeeph2/sample-spring-boot-app"
                                         echo "   - Type: Application"
                                         echo "4. Create environments: 'development' and 'test'"
                                         echo "5. Re-run this build"
-                                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                                        echo "=========================================="
                                     } else {
                                         echo "⚠️  This may be due to CloudBees Unify plugin not installed or not configured"
                                     }
