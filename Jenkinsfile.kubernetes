@@ -445,16 +445,19 @@ SARIF_EOF
                             script {
                                 try {
                                     // Aikido doesn't natively output SARIF, so we use JSON format
-                                    def aikidoJson = "${WORKSPACE}/build-artifacts/aikido-scan-details.json"
-                                    def aikidoSarif = "${WORKSPACE}/build-artifacts/aikido-scan.sarif"
+                                    def aikidoJson = "build-artifacts/aikido-scan-details.json"
+                                    def aikidoSarif = "build-artifacts/aikido-scan.sarif"
 
                                     echo "📍 Checking for Aikido scan results..."
+                                    sh "ls -la build-artifacts/ | grep aikido || echo 'No Aikido files found'"
 
                                     // Try JSON format first (native Aikido output)
                                     if (fileExists(aikidoJson)) {
-                                        echo "✅ Aikido JSON found, registering with CloudBees Unify as JSON format..."
+                                        echo "✅ Aikido JSON found at: ${aikidoJson}"
+                                        sh "wc -l ${aikidoJson}"  // Show file size
+
                                         registerSecurityScan(
-                                            artifacts: 'build-artifacts/aikido-scan-details.json',
+                                            artifacts: aikidoJson,
                                             format: 'json',
                                             scanner: 'Aikido',  // REQUIRED for non-SARIF
                                             archive: false
@@ -464,21 +467,42 @@ SARIF_EOF
                                     // Fallback to SARIF wrapper if JSON not available
                                     else if (fileExists(aikidoSarif)) {
                                         echo "⚠️  Aikido JSON not found, using SARIF wrapper..."
+                                        echo "📍 SARIF location: ${aikidoSarif}"
+
                                         registerSecurityScan(
-                                            artifacts: 'build-artifacts/aikido-scan.sarif',
+                                            artifacts: aikidoSarif,
                                             format: 'sarif',
                                             scanner: 'Aikido',
                                             archive: false
                                         )
                                         echo "✅ Aikido security scan registered with CloudBees Unify (SARIF format)"
                                     } else {
-                                        echo "⚠️  Aikido scan results not found"
-                                        echo "⚠️  Expected: ${aikidoJson} or ${aikidoSarif}"
-                                        sh "ls -la build-artifacts/ || echo 'build-artifacts directory not found'"
+                                        echo "⚠️  Neither Aikido JSON nor SARIF found"
+                                        echo "⚠️  This likely means the Aikido scan didn't return a scan ID"
+                                        echo "⚠️  Check aikido-scan-output.txt for details"
                                     }
                                 } catch (Exception e) {
                                     echo "⚠️  Warning: Could not register security scan with CloudBees Unify: ${e.message}"
-                                    echo "⚠️  This may be due to CloudBees Unify plugin not installed or not configured"
+
+                                    // Check if it's the "component not found" error
+                                    if (e.message.contains("unable to retrieve run details") ||
+                                        e.message.contains("check that the component has been created")) {
+                                        echo ""
+                                        echo "❌ COMPONENT NOT FOUND IN CLOUDBEES UNIFY"
+                                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                                        echo "To fix this:"
+                                        echo "1. Log into CloudBees Unify"
+                                        echo "2. Navigate to: Components → Create Component"
+                                        echo "3. Create component:"
+                                        echo "   - Name: fitness-tracker"
+                                        echo "   - Repository: https://github.com/anuddeeph2/sample-spring-boot-app"
+                                        echo "   - Type: Application"
+                                        echo "4. Create environments: 'development' and 'test'"
+                                        echo "5. Re-run this build"
+                                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                                    } else {
+                                        echo "⚠️  This may be due to CloudBees Unify plugin not installed or not configured"
+                                    }
                                 }
                             }
 
