@@ -119,7 +119,7 @@ spec:
             steps {
                 container('maven') {
                     script {
-                        def helper = new buildHelper()
+                        def helper = buildHelper
                         helper.setupWorkspace()
                     }
                 }
@@ -130,7 +130,7 @@ spec:
             steps {
                 container('maven') {
                     script {
-                        def helper = new buildHelper()
+                        def helper = buildHelper
                         helper.checkoutWithAnalysis()
                     }
                 }
@@ -144,7 +144,7 @@ spec:
             steps {
                 container('maven') {
                     script {
-                        def helper = new buildHelper()
+                        def helper = buildHelper
                         helper.buildAndTest()
                     }
                 }
@@ -153,7 +153,7 @@ spec:
                 always {
                     container('maven') {
                         script {
-                            def helper = new buildHelper()
+                            def helper = buildHelper
                             helper.archiveBuildArtifacts()
                         }
                     }
@@ -165,7 +165,7 @@ spec:
             steps {
                 container('maven') {
                     script {
-                        def scanner = new securityScanner()
+                        def scanner = securityScanner
                         scanner.runAikidoScan()
                     }
                 }
@@ -174,7 +174,7 @@ spec:
                 always {
                     container('maven') {
                         script {
-                            def scanner = new securityScanner()
+                            def scanner = securityScanner
                             scanner.convertAikidoToSARIF()
                             scanner.publishAikidoToUnify()
                         }
@@ -236,7 +236,7 @@ EOF
                             echo "Registry: ${DOCKER_REGISTRY}" >> ${ARTIFACTS_DIR}/build-info.txt
                         """
 
-                        def publisher = new unifyPublisher()
+                        def publisher = unifyPublisher
                         env.DOCKER_ARTIFACT_ID = publisher.publishBuildArtifact(
                             name: "fitness-tracker-docker",
                             version: "${IMAGE_TAG}",
@@ -259,7 +259,7 @@ EOF
             steps {
                 container('maven') {
                     script {
-                        def helper = new buildHelper()
+                        def helper = buildHelper
                         helper.updateHelmChart(env.IMAGE_TAG, env.IMAGE_NAME)
                     }
                 }
@@ -343,7 +343,7 @@ EOF
                             exit 1
                         """
 
-                        def publisher = new unifyPublisher()
+                        def publisher = unifyPublisher
                         if (env.DOCKER_ARTIFACT_ID) {
                             def targetEnv = env.BRANCH_NAME == 'develop' ? 'Development' : 'Test'
                             publisher.publishDeployment(
@@ -391,14 +391,14 @@ EOF
                 stage('API Testing') {
                     steps {
                         script {
-                            def executor = new testExecutor()
+                            def executor = testExecutor
                             executor.runAPITests()
                         }
                     }
                     post {
                         always {
                             script {
-                                def reporter = new testReporter()
+                                def reporter = testReporter
                                 reporter.archiveAPITests()
                             }
                         }
@@ -408,14 +408,14 @@ EOF
                 stage('Performance Testing') {
                     steps {
                         script {
-                            def executor = new testExecutor()
+                            def executor = testExecutor
                             executor.runJMeterTests()
                         }
                     }
                     post {
                         always {
                             script {
-                                def reporter = new testReporter()
+                                def reporter = testReporter
                                 reporter.archiveJMeterReports()
                             }
                         }
@@ -425,7 +425,7 @@ EOF
                 stage('Security Testing') {
                     steps {
                         script {
-                            def executor = new testExecutor()
+                            def executor = testExecutor
                             executor.runZAPTests()
                         }
                     }
@@ -433,10 +433,10 @@ EOF
                         always {
                             container('maven') {
                                 script {
-                                    def reporter = new testReporter()
+                                    def reporter = testReporter
                                     reporter.archiveZAPReports()
 
-                                    def scanner = new securityScanner()
+                                    def scanner = securityScanner
                                     scanner.convertZAPToSARIF()
                                     scanner.publishZAPToUnify()
                                 }
@@ -448,14 +448,14 @@ EOF
                 stage('UI Testing') {
                     steps {
                         script {
-                            def executor = new testExecutor()
+                            def executor = testExecutor
                             executor.runUITests()
                         }
                     }
                     post {
                         always {
                             script {
-                                def reporter = new testReporter()
+                                def reporter = testReporter
                                 reporter.archiveUITests()
                             }
                         }
@@ -507,7 +507,7 @@ EOF
             steps {
                 container('maven') {
                     script {
-                        def reporter = new testReporter()
+                        def reporter = testReporter
                         reporter.createTestDashboard()
 
                         sh """
@@ -555,7 +555,7 @@ JUNITEOF
                             fi
                         """
 
-                        def publisher = new unifyPublisher()
+                        def publisher = unifyPublisher
                         publisher.publishTestResults(
                             testResults: 'target/surefire-reports/*.xml,build-artifacts/jmeter-reports/jmeter-junit.xml,build-artifacts/uipath-reports/uipath-junit.xml'
                         )
