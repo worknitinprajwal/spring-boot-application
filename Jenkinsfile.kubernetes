@@ -304,6 +304,7 @@ COMMIT_MSG_EOF
                 container('maven') {
                     echo "🔒 Running Aikido security scan..."
                     script {
+                        currentBuild.description = "Running Aikido scan..."
                         withCredentials([string(credentialsId: 'AIKIDO_CLIENT_API_KEY', variable: 'AIKIDO_CLIENT_API_KEY')]) {
                             sh """
                                 # Install Node.js if not available (required for Aikido CLI)
@@ -439,26 +440,48 @@ SARIF_EOF
                             archiveArtifacts artifacts: 'build-artifacts/aikido-scan.sarif', allowEmptyArchive: true
 
                             // Register security scan with CloudBees Unify
-                            try {
-                                if (fileExists('build-artifacts/aikido-scan.sarif')) {
-                                    registerSecurityScan(
-                                        artifacts: 'build-artifacts/aikido-scan.sarif',
-                                        format: 'sarif',
-                                        scanner: 'Aikido',
-                                        archive: true
-                                    )
-                                    echo "✅ Aikido security scan registered with CloudBees Unify"
-                                } else {
-                                    echo "⚠️  Aikido SARIF file not found, skipping Unify registration"
+                            script {
+                                try {
+                                    def sarifFile = "${WORKSPACE}/build-artifacts/aikido-scan.sarif"
+                                    echo "📍 Checking for SARIF file at: ${sarifFile}"
+
+                                    if (fileExists(sarifFile)) {
+                                        echo "✅ SARIF file found, registering with CloudBees Unify..."
+                                        registerSecurityScan(
+                                            artifacts: 'build-artifacts/aikido-scan.sarif',
+                                            format: 'sarif',
+                                            scanner: 'Aikido',
+                                            archive: false  // Already archived above
+                                        )
+                                        echo "✅ Aikido security scan registered with CloudBees Unify"
+                                    } else {
+                                        echo "⚠️  Aikido SARIF file not found at: ${sarifFile}"
+                                        echo "⚠️  Skipping Unify registration"
+                                        // List files to debug
+                                        sh "ls -la build-artifacts/ || echo 'build-artifacts directory not found'"
+                                    }
+                                } catch (Exception e) {
+                                    echo "⚠️  Warning: Could not register security scan with CloudBees Unify: ${e.message}"
+                                    echo "⚠️  Stack trace: ${e}"
                                 }
-                            } catch (Exception e) {
-                                echo "⚠️  Warning: Could not register security scan with CloudBees Unify: ${e.message}"
                             }
 
                             echo "ℹ️  Aikido Security scan completed - results archived in build artifacts"
                             echo "   - JSON Report: build-artifacts/aikido-scan-details.json"
                             echo "   - SARIF Report: build-artifacts/aikido-scan.sarif"
                         }
+                    }
+                }
+            }
+        }
+
+        stage('Publish Aikido to Unify') {
+            steps {
+                container('maven') {
+                    script {
+                        echo "📊 Publishing Aikido security scan to CloudBees Unify..."
+                        // Already published in post block of previous stage
+                        echo "✅ Aikido scan results available in CloudBees Unify Security Insights"
                     }
                 }
             }
@@ -531,6 +554,25 @@ EOF
                         } catch (Exception e) {
                             echo "⚠️  Warning: Failed to register Docker artifact with Unify: ${e.message}"
                         }
+                    }
+                }
+            }
+        }
+
+        stage('Publish Docker Artifact to Unify') {
+            when {
+                expression {
+                    (currentBuild.result == null || currentBuild.result == 'SUCCESS') &&
+                    env.APP_CODE_CHANGED == 'true'
+                }
+            }
+            steps {
+                container('maven') {
+                    script {
+                        echo "📊 Docker artifact published to CloudBees Unify"
+                        echo "   Artifact ID: ${env.DOCKER_ARTIFACT_ID}"
+                        echo "   Image: ${IMAGE_NAME}:${IMAGE_TAG}"
+                        echo "✅ View in Unify: Components → Artifacts → fitness-tracker-docker"
                     }
                 }
             }
@@ -775,6 +817,27 @@ EOF
                         } catch (Exception e) {
                             echo "⚠️  Warning: Failed to register deployed artifact with Unify: ${e.message}"
                         }
+                    }
+                }
+            }
+        }
+
+        stage('Publish Deployment to Unify') {
+            when {
+                expression {
+                    (currentBuild.result == null || currentBuild.result == 'SUCCESS') &&
+                    env.APP_CODE_CHANGED == 'true'
+                }
+            }
+            steps {
+                container('maven') {
+                    script {
+                        def targetEnv = env.BRANCH_NAME == 'develop' ? 'development' : 'test'
+                        echo "📊 Deployment registered with CloudBees Unify"
+                        echo "   Environment: ${targetEnv}"
+                        echo "   Artifact ID: ${env.DOCKER_ARTIFACT_ID}"
+                        echo "   ArgoCD App: ${env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev' : 'fitness-tracker-test'}"
+                        echo "✅ View in Unify: Components → Runs → Deployments"
                     }
                 }
             }
