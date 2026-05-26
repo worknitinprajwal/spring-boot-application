@@ -5,6 +5,10 @@
  * Handles Aikido and ZAP security scans
  */
 
+def call() {
+    return this
+}
+
 def runAikidoScan() {
     withCredentials([string(credentialsId: 'AIKIDO_CLIENT_API_KEY', variable: 'AIKIDO_CLIENT_API_KEY')]) {
         sh """

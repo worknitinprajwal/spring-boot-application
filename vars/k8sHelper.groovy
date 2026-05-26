@@ -5,6 +5,10 @@
  * Reduces Jenkinsfile size by extracting K8s operations
  */
 
+def call() {
+    return this
+}
+
 def waitForDeployment(Map config = [:]) {
     def namespace = config.namespace ?: 'default'
     def deployment = config.deployment ?: ''

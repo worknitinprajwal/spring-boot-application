@@ -5,6 +5,10 @@
  * Extracts massive test execution blocks
  */
 
+def call() {
+    return this
+}
+
 def runAPITests() {
     container('maven') {
         sh script: """

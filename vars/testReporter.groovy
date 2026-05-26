@@ -5,6 +5,10 @@
  * Handles all test report archiving and HTML generation
  */
 
+def call() {
+    return this
+}
+
 def archiveAPITests() {
     archiveArtifacts artifacts: 'build-artifacts/api-tests/**/*', allowEmptyArchive: true
 

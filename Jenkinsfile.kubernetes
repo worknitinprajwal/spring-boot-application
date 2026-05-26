@@ -1,5 +1,9 @@
 // CloudBees CI Pipeline - REFACTORED for reduced bytecode size
 // Uses shared library functions (vars/) to stay under 64KB CPS limit
+//
+// IMPORTANT: The vars/ files use call() method pattern to work as global
+// variables without requiring Jenkins Global Shared Library configuration.
+// This allows immediate execution without Jenkins admin configuration changes.
 
 pipeline {
     agent {
@@ -119,8 +123,7 @@ spec:
             steps {
                 container('maven') {
                     script {
-                        def helper = buildHelper
-                        helper.setupWorkspace()
+                        buildHelper().setupWorkspace()
                     }
                 }
             }
@@ -130,8 +133,7 @@ spec:
             steps {
                 container('maven') {
                     script {
-                        def helper = buildHelper
-                        helper.checkoutWithAnalysis()
+                        buildHelper().checkoutWithAnalysis()
                     }
                 }
             }
@@ -144,8 +146,7 @@ spec:
             steps {
                 container('maven') {
                     script {
-                        def helper = buildHelper
-                        helper.buildAndTest()
+                        buildHelper().buildAndTest()
                     }
                 }
             }
@@ -153,8 +154,7 @@ spec:
                 always {
                     container('maven') {
                         script {
-                            def helper = buildHelper
-                            helper.archiveBuildArtifacts()
+                            buildHelper().archiveBuildArtifacts()
                         }
                     }
                 }
@@ -165,8 +165,7 @@ spec:
             steps {
                 container('maven') {
                     script {
-                        def scanner = securityScanner
-                        scanner.runAikidoScan()
+                        securityScanner().runAikidoScan()
                     }
                 }
             }
@@ -174,9 +173,8 @@ spec:
                 always {
                     container('maven') {
                         script {
-                            def scanner = securityScanner
-                            scanner.convertAikidoToSARIF()
-                            scanner.publishAikidoToUnify()
+                            securityScanner().convertAikidoToSARIF()
+                            securityScanner().publishAikidoToUnify()
                         }
                     }
                 }
@@ -236,8 +234,7 @@ EOF
                             echo "Registry: ${DOCKER_REGISTRY}" >> ${ARTIFACTS_DIR}/build-info.txt
                         """
 
-                        def publisher = unifyPublisher
-                        env.DOCKER_ARTIFACT_ID = publisher.publishBuildArtifact(
+                        env.DOCKER_ARTIFACT_ID = unifyPublisher().publishBuildArtifact(
                             name: "fitness-tracker-docker",
                             version: "${IMAGE_TAG}",
                             url: "docker.io/${IMAGE_NAME}:${IMAGE_TAG}",
@@ -259,8 +256,7 @@ EOF
             steps {
                 container('maven') {
                     script {
-                        def helper = buildHelper
-                        helper.updateHelmChart(env.IMAGE_TAG, env.IMAGE_NAME)
+                        buildHelper().updateHelmChart(env.IMAGE_TAG, env.IMAGE_NAME)
                     }
                 }
             }
@@ -343,10 +339,9 @@ EOF
                             exit 1
                         """
 
-                        def publisher = unifyPublisher
                         if (env.DOCKER_ARTIFACT_ID) {
                             def targetEnv = env.BRANCH_NAME == 'develop' ? 'Development' : 'Test'
-                            publisher.publishDeployment(
+                            unifyPublisher().publishDeployment(
                                 artifactId: env.DOCKER_ARTIFACT_ID,
                                 targetEnvironment: targetEnv,
                                 labels: "argocd,gitops"
@@ -391,15 +386,13 @@ EOF
                 stage('API Testing') {
                     steps {
                         script {
-                            def executor = testExecutor
-                            executor.runAPITests()
+                            testExecutor().runAPITests()
                         }
                     }
                     post {
                         always {
                             script {
-                                def reporter = testReporter
-                                reporter.archiveAPITests()
+                                testReporter().archiveAPITests()
                             }
                         }
                     }
@@ -408,15 +401,13 @@ EOF
                 stage('Performance Testing') {
                     steps {
                         script {
-                            def executor = testExecutor
-                            executor.runJMeterTests()
+                            testExecutor().runJMeterTests()
                         }
                     }
                     post {
                         always {
                             script {
-                                def reporter = testReporter
-                                reporter.archiveJMeterReports()
+                                testReporter().archiveJMeterReports()
                             }
                         }
                     }
@@ -425,20 +416,16 @@ EOF
                 stage('Security Testing') {
                     steps {
                         script {
-                            def executor = testExecutor
-                            executor.runZAPTests()
+                            testExecutor().runZAPTests()
                         }
                     }
                     post {
                         always {
                             container('maven') {
                                 script {
-                                    def reporter = testReporter
-                                    reporter.archiveZAPReports()
-
-                                    def scanner = securityScanner
-                                    scanner.convertZAPToSARIF()
-                                    scanner.publishZAPToUnify()
+                                    testReporter().archiveZAPReports()
+                                    securityScanner().convertZAPToSARIF()
+                                    securityScanner().publishZAPToUnify()
                                 }
                             }
                         }
@@ -448,15 +435,13 @@ EOF
                 stage('UI Testing') {
                     steps {
                         script {
-                            def executor = testExecutor
-                            executor.runUITests()
+                            testExecutor().runUITests()
                         }
                     }
                     post {
                         always {
                             script {
-                                def reporter = testReporter
-                                reporter.archiveUITests()
+                                testReporter().archiveUITests()
                             }
                         }
                     }
@@ -507,8 +492,7 @@ EOF
             steps {
                 container('maven') {
                     script {
-                        def reporter = testReporter
-                        reporter.createTestDashboard()
+                        testReporter().createTestDashboard()
 
                         sh """
                             echo "=== Build Artifacts Summary ===" >> ${ARTIFACTS_DIR}/build-info.txt
@@ -555,8 +539,7 @@ JUNITEOF
                             fi
                         """
 
-                        def publisher = unifyPublisher
-                        publisher.publishTestResults(
+                        unifyPublisher().publishTestResults(
                             testResults: 'target/surefire-reports/*.xml,build-artifacts/jmeter-reports/jmeter-junit.xml,build-artifacts/uipath-reports/uipath-junit.xml'
                         )
                     }

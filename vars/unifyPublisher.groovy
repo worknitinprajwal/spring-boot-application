@@ -5,6 +5,10 @@
  * Reduces Jenkinsfile size by extracting repetitive Unify API calls
  */
 
+def call() {
+    return this
+}
+
 def publishSecurityScan(Map config = [:]) {
     def artifacts = config.artifacts ?: ''
     def format = config.format ?: 'sarif'

@@ -5,6 +5,10 @@
  * Extracts common build operations
  */
 
+def call() {
+    return this
+}
+
 def setupWorkspace() {
     sh """
         mkdir -p ${env.ARTIFACTS_DIR}
