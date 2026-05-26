@@ -1,9 +1,10 @@
 // CloudBees CI Pipeline - REFACTORED for reduced bytecode size
-// Uses shared library functions (vars/) to stay under 64KB CPS limit
-//
-// IMPORTANT: The vars/ files use call() method pattern to work as global
-// variables without requiring Jenkins Global Shared Library configuration.
-// This allows immediate execution without Jenkins admin configuration changes.
+// Uses shared library functions (vars/) loaded via library() step
+
+library identifier: 'local-lib@develop',
+        retriever: modernSCM([$class: 'GitSCMSource',
+                              remote: 'https://github.com/anuddeeph2/sample-spring-boot-app.git',
+                              credentialsId: 'github-credentials'])
 
 pipeline {
     agent {
