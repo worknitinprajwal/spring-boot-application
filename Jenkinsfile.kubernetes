@@ -573,20 +573,22 @@ JUNITEOF
             }
         }
         success {
-            echo "✅ Pipeline completed successfully!"
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-            echo "📦 Build: ${BUILD_NUMBER}"
-            echo "🌿 Branch: ${env.BRANCH_NAME}"
+            script {
+                echo "✅ Pipeline completed successfully!"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "📦 Build: ${BUILD_NUMBER}"
+                echo "🌿 Branch: ${env.BRANCH_NAME}"
 
-            if (env.DOCKER_ARTIFACT_ID) {
-                echo "🐳 Image: ${IMAGE_NAME}:${IMAGE_TAG} (Built & Pushed)"
-            } else if (env.APP_CODE_CHANGED == 'true') {
-                echo "🐳 Image: ${IMAGE_NAME}:${IMAGE_TAG} (Build attempted)"
-            } else {
-                echo "📝 No app code changes - Docker build skipped"
+                if (env.DOCKER_ARTIFACT_ID) {
+                    echo "🐳 Image: ${IMAGE_NAME}:${IMAGE_TAG} (Built & Pushed)"
+                } else if (env.APP_CODE_CHANGED == 'true') {
+                    echo "🐳 Image: ${IMAGE_NAME}:${IMAGE_TAG} (Build attempted)"
+                } else {
+                    echo "📝 No app code changes - Docker build skipped"
+                }
+
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             }
-
-            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         }
         failure {
             script {
