@@ -1,7 +1,5 @@
-// CloudBees CI Pipeline - Build, Test, Deploy with Artifacts & Unify Integration
-// UPDATED VERSION: Uses Docker containers for testing tools instead of binary downloads
-// Stores artifacts in workspace and publishes to CloudBees Unify
-// Uses Kubernetes pod template with pre-installed testing tools
+// CloudBees CI Pipeline - REFACTORED for reduced bytecode size
+// Uses shared library functions (vars/) to stay under 64KB CPS limit
 
 pipeline {
     agent {
@@ -17,10 +15,8 @@ spec:
   containers:
   - name: maven
     image: maven:3.9-eclipse-temurin-21
-    command:
-    - sleep
-    args:
-    - 99d
+    command: ['sleep']
+    args: ['99d']
     tty: true
     resources:
       requests:
@@ -37,21 +33,16 @@ spec:
       readOnly: true
   - name: kaniko
     image: gcr.io/kaniko-project/executor:debug
-    command:
-    - sleep
-    args:
-    - 99d
+    command: ['sleep']
+    args: ['99d']
     tty: true
     volumeMounts:
     - name: docker-config
       mountPath: /kaniko/.docker
-  # JMeter Container - Pre-installed with all dependencies
   - name: jmeter
     image: justb4/jmeter:5.5
-    command:
-    - sleep
-    args:
-    - 99d
+    command: ['sleep']
+    args: ['99d']
     tty: true
     resources:
       requests:
@@ -60,13 +51,10 @@ spec:
       limits:
         memory: "1Gi"
         cpu: "500m"
-  # OWASP ZAP Container - Pre-installed security scanner
   - name: zap
     image: zaproxy/zap-stable:latest
-    command:
-    - sleep
-    args:
-    - 99d
+    command: ['sleep']
+    args: ['99d']
     tty: true
     resources:
       requests:
@@ -78,13 +66,10 @@ spec:
     volumeMounts:
     - name: zap-workdir
       mountPath: /zap/wrk
-  # UiPath Robot Container - For RPA/UI testing
   - name: uipath
     image: python:3.11-slim
-    command:
-    - sleep
-    args:
-    - 99d
+    command: ['sleep']
+    args: ['99d']
     tty: true
     resources:
       requests:
@@ -108,30 +93,22 @@ spec:
     }
 
     options {
-        // Keep build artifacts and logs
         buildDiscarder(logRotator(
-            numToKeepStr: '10',           // Keep last 10 builds
-            artifactNumToKeepStr: '5',    // Keep artifacts for last 5 builds
-            daysToKeepStr: '30'           // Keep builds for 30 days
+            numToKeepStr: '10',
+            artifactNumToKeepStr: '5',
+            daysToKeepStr: '30'
         ))
     }
 
     environment {
-        // Application details
         APP_NAME = 'fitness-tracker'
         DOCKER_REGISTRY = 'docker.io'
         DOCKER_REPO = 'anuddeeph2'
         IMAGE_NAME = "${DOCKER_REPO}/${APP_NAME}"
-
-        // Use branch name + build number for image tag
         BRANCH_NAME_CLEAN = "${env.BRANCH_NAME.replaceAll('/', '-')}"
         IMAGE_TAG = "${BRANCH_NAME_CLEAN}-${BUILD_NUMBER}"
-
-        // Workspace artifacts directory
         ARTIFACTS_DIR = "${WORKSPACE}/build-artifacts"
         REPORTS_DIR = "${WORKSPACE}/test-reports"
-
-        // Jira configuration
         JIRA_SITE = 'https://cloudbees.atlassian.net'
         JIRA_PROJECT_KEY = 'CBDEMO'
         JIRA_EMAIL = 'analla@cloudbees.com'
@@ -141,20 +118,10 @@ spec:
         stage('Setup') {
             steps {
                 container('maven') {
-                    echo "🔧 Setting up workspace..."
-                    sh """
-                        mkdir -p ${ARTIFACTS_DIR}
-                        mkdir -p ${REPORTS_DIR}
-                        echo "Build: ${BUILD_NUMBER}" > ${ARTIFACTS_DIR}/build-info.txt
-                        echo "Branch: ${BRANCH_NAME}" >> ${ARTIFACTS_DIR}/build-info.txt
-                        echo "Timestamp: \$(date)" >> ${ARTIFACTS_DIR}/build-info.txt
-
-                        # Install kubectl for ArgoCD verification
-                        if ! command -v kubectl &> /dev/null; then
-                            curl -LO "https://dl.k8s.io/release/\$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/arm64/kubectl"
-                            chmod +x kubectl && mv kubectl /usr/local/bin/
-                        fi
-                    """
+                    script {
+                        def helper = new buildHelper()
+                        helper.setupWorkspace()
+                    }
                 }
             }
         }
@@ -162,72 +129,9 @@ spec:
         stage('Checkout') {
             steps {
                 container('maven') {
-                    echo "🔄 Checking out code from branch: ${env.BRANCH_NAME}"
-                    checkout scm
-
                     script {
-                        // Fix git ownership issue
-                        sh "git config --global --add safe.directory ${WORKSPACE}"
-
-                        env.GIT_COMMIT_SHORT = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                        env.GIT_COMMIT_MSG = sh(script: "git log -1 --pretty=%B", returnStdout: true).trim()
-
-                        // Check if commit message contains [skip ci] or [ci skip]
-                        if (env.GIT_COMMIT_MSG.contains('[skip ci]') || env.GIT_COMMIT_MSG.contains('[ci skip]')) {
-                            echo "⏭️  Skipping build - commit message contains [skip ci]"
-                            currentBuild.result = 'NOT_BUILT'
-                            error('Build skipped by [skip ci] tag in commit message')
-                        }
-
-                        // Check what files changed to determine if we should build
-                        def changedFiles = sh(
-                            script: "git diff --name-only HEAD~1 HEAD || echo 'ALL'",
-                            returnStdout: true
-                        ).trim()
-
-                        echo "📝 Changed files:\n${changedFiles}"
-
-                        // Determine if application code changed
-                        def appCodeChanged = false
-                        def helmConfigChanged = false
-
-                        changedFiles.split('\n').each { file ->
-                            if (file.startsWith('src/') ||
-                                file.startsWith('pom.xml') ||
-                                file.startsWith('Dockerfile') ||
-                                file == 'ALL') {
-                                appCodeChanged = true
-                            }
-                            if (file.startsWith('k8s/') ||
-                                file.startsWith('argocd/') ||
-                                file.startsWith('helm/')) {
-                                helmConfigChanged = true
-                            }
-                        }
-
-                        env.APP_CODE_CHANGED = appCodeChanged.toString()
-                        env.HELM_CONFIG_CHANGED = helmConfigChanged.toString()
-
-                        echo "🔍 Change Analysis:"
-                        echo "  - Application code changed: ${env.APP_CODE_CHANGED}"
-                        echo "  - Helm/K8s config changed: ${env.HELM_CONFIG_CHANGED}"
-
-                        // If only helm/k8s configs changed, skip the build
-                        if (!appCodeChanged && helmConfigChanged) {
-                            echo "⏭️  Skipping build - only Helm/K8s configs changed (no app code changes)"
-                            echo "💡 ArgoCD will automatically sync these config changes"
-                            currentBuild.result = 'NOT_BUILT'
-                            currentBuild.description = "Config-only change (ArgoCD sync)"
-                            error('Build skipped - no application code changes detected')
-                        }
-
-                        // Write commit info, escaping special characters in commit message
-                        sh """
-                            echo "Commit: ${env.GIT_COMMIT_SHORT}" >> ${ARTIFACTS_DIR}/build-info.txt
-                            cat >> ${ARTIFACTS_DIR}/build-info.txt << 'COMMIT_MSG_EOF'
-Message: ${env.GIT_COMMIT_MSG}
-COMMIT_MSG_EOF
-                        """
+                        def helper = new buildHelper()
+                        helper.checkoutWithAnalysis()
                     }
                 }
             }
@@ -239,60 +143,18 @@ COMMIT_MSG_EOF
             }
             steps {
                 container('maven') {
-                    echo "🏗️ Building Spring Boot application..."
-                    sh """
-                        # Check if tests exist
-                        if [ -d "src/test/java" ]; then
-                            echo "📝 Running unit tests..."
-                            mvn -B clean test -Dmaven.repo.local=/root/.m2/repository
-                        else
-                            echo "⚠️  No unit tests found (src/test/java does not exist)"
-                        fi
-
-                        # Build the JAR
-                        echo "📦 Building JAR package..."
-                        mvn -B package -DskipTests -Dmaven.repo.local=/root/.m2/repository
-                    """
-
-                    // Copy build artifacts
-                    sh """
-                        cp target/*.jar ${ARTIFACTS_DIR}/ || true
-                        if [ -d "target/surefire-reports" ]; then
-                            cp -r target/surefire-reports ${REPORTS_DIR}/unit-tests
-                        else
-                            mkdir -p ${REPORTS_DIR}/unit-tests
-                            echo "No unit tests were executed" > ${REPORTS_DIR}/unit-tests/README.txt
-                        fi
-                    """
+                    script {
+                        def helper = new buildHelper()
+                        helper.buildAndTest()
+                    }
                 }
             }
             post {
                 always {
                     container('maven') {
                         script {
-                            // Debug: Show what files exist
-                            sh """
-                                echo "📂 Checking workspace contents..."
-                                ls -la target/ || echo "❌ target/ directory not found"
-                                ls -la target/*.jar || echo "❌ No JAR files found in target/"
-                            """
-
-                            // Archive JAR file - fail if not found
-                            if (fileExists('target')) {
-                                archiveArtifacts artifacts: 'target/*.jar', allowEmptyArchive: false, fingerprint: true
-                                echo "✅ JAR file archived successfully"
-                            } else {
-                                echo "❌ ERROR: target/ directory does not exist! JAR was not built."
-                            }
-
-                            // Only process test results if they exist
-                            if (fileExists('target/surefire-reports')) {
-                                echo "📊 Publishing unit test results..."
-                                junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
-                                archiveArtifacts artifacts: 'target/surefire-reports/**/*', allowEmptyArchive: true
-                            } else {
-                                echo "⚠️  No unit tests found - skipping test report publishing"
-                            }
+                            def helper = new buildHelper()
+                            helper.archiveBuildArtifacts()
                         }
                     }
                 }
@@ -302,65 +164,9 @@ COMMIT_MSG_EOF
         stage('Aikido Security Scan') {
             steps {
                 container('maven') {
-                    echo "🔒 Running Aikido security scan..."
                     script {
-                        currentBuild.description = "Running Aikido scan..."
-                        withCredentials([string(credentialsId: 'AIKIDO_CLIENT_API_KEY', variable: 'AIKIDO_CLIENT_API_KEY')]) {
-                            sh """
-                                # Install Node.js if not available (required for Aikido CLI)
-                                if ! command -v node &> /dev/null; then
-                                    echo "Installing Node.js..."
-                                    curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
-                                    apt-get install -y nodejs || echo "Node.js install failed"
-                                fi
-
-                                # Install Aikido CI API Client
-                                echo "Installing Aikido CI API Client..."
-                                npm install -g @aikidosec/ci-api-client@latest || echo "Warning: Aikido API client installation failed"
-
-                                # Get repository name as it appears in Aikido (just repo name, not owner/repo)
-                                REPO_URL=\$(git config --get remote.origin.url)
-                                REPO_NAME=\$(basename "\${REPO_URL}" .git)
-
-                                # Run Aikido scan-release (release gating)
-                                echo "Running Aikido scan-release for repository: \${REPO_NAME}, commit: ${GIT_COMMIT}"
-
-                                # Capture scan output to file with verbose output
-                                # Note: Scan will report findings but not fail the build
-                                (aikido-api-client scan-release "\${REPO_NAME}" "${GIT_COMMIT}" \
-                                  --apikey "\${AIKIDO_CLIENT_API_KEY}" \
-                                  --fail-on-sast-scan \
-                                  --fail-on-secrets-scan \
-                                  --minimum-severity-level HIGH 2>&1 | tee ${ARTIFACTS_DIR}/aikido-scan-output.txt) || true
-
-                                # Extract scan ID from output
-                                SCAN_ID=\$(grep "Aikido Security scan started" ${ARTIFACTS_DIR}/aikido-scan-output.txt | sed -n 's/.*id: \\([0-9]*\\).*/\\1/p')
-
-                                # Extract diff URL
-                                DIFF_URL=\$(grep "Diff url:" ${ARTIFACTS_DIR}/aikido-scan-output.txt | sed -n 's/.*Diff url: \\(.*\\)/\\1/p')
-
-                                # Fetch detailed scan results via API if scan ID exists
-                                if [ -n "\${SCAN_ID}" ]; then
-                                    echo "Fetching detailed results for scan ID: \${SCAN_ID}"
-                                    curl -s -H "X-AIK-API-SECRET: \${AIKIDO_CLIENT_API_KEY}" \
-                                      "https://app.aikido.dev/api/integrations/continuous_integration/scan/repository?scan_id=\${SCAN_ID}" \
-                                      > ${ARTIFACTS_DIR}/aikido-scan-details.json
-                                fi
-
-                                # Generate summary
-                                echo "=== Aikido Security Scan ===" >> ${ARTIFACTS_DIR}/build-info.txt
-                                echo "Scan Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> ${ARTIFACTS_DIR}/build-info.txt
-                                echo "Repository: \${REPO_NAME}" >> ${ARTIFACTS_DIR}/build-info.txt
-                                echo "Commit: ${GIT_COMMIT}" >> ${ARTIFACTS_DIR}/build-info.txt
-                                echo "Scan ID: \${SCAN_ID:-N/A}" >> ${ARTIFACTS_DIR}/build-info.txt
-                                echo "Diff URL: \${DIFF_URL:-N/A}" >> ${ARTIFACTS_DIR}/build-info.txt
-
-                                echo "✅ Aikido Security Scan completed - check artifacts for detailed results"
-                                if [ -n "\${DIFF_URL}" ]; then
-                                    echo "View scan details: \${DIFF_URL}"
-                                fi
-                            """
-                        }
+                        def scanner = new securityScanner()
+                        scanner.runAikidoScan()
                     }
                 }
             }
@@ -368,145 +174,9 @@ COMMIT_MSG_EOF
                 always {
                     container('maven') {
                         script {
-                            // Archive security scan results
-                            archiveArtifacts artifacts: 'build-artifacts/aikido-scan-output.txt', allowEmptyArchive: true
-                            archiveArtifacts artifacts: 'build-artifacts/aikido-scan-details*.json', allowEmptyArchive: true
-
-                            // Convert Aikido JSON to SARIF format for CloudBees Unify
-                            sh """
-                                # Install Python and jq for JSON processing
-                                apt-get update -qq && apt-get install -y -qq jq > /dev/null 2>&1 || echo "Tools already installed"
-
-                                # Check if Aikido scan results exist
-                                if [ -f "build-artifacts/aikido-scan-details.json" ]; then
-                                    echo "Converting Aikido results to SARIF 2.1.0 format for CloudBees Unify..."
-
-                                    # Extract scan metadata
-                                    SCAN_ID=\$(jq -r '.scan_id // "unknown"' build-artifacts/aikido-scan-details.json 2>/dev/null || echo 'unknown')
-
-                                    # Create proper SARIF 2.1.0 format from Aikido results
-                                    cat > build-artifacts/aikido-scan.sarif << SARIF_EOF
-{
-  "\\\$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-  "version": "2.1.0",
-  "runs": [
-    {
-      "tool": {
-        "driver": {
-          "name": "Aikido Security",
-          "informationUri": "https://aikido.dev",
-          "semanticVersion": "1.0.0",
-          "organization": "Aikido"
-        }
-      },
-      "results": [],
-      "properties": {
-        "sourceFile": "aikido-scan-details.json",
-        "scanId": "\${SCAN_ID}",
-        "buildNumber": "${BUILD_NUMBER}",
-        "gitCommit": "${GIT_COMMIT}"
-      },
-      "columnKind": "utf16CodeUnits"
-    }
-  ]
-}
-SARIF_EOF
-                                    echo "✅ Created SARIF 2.1.0 format for Aikido scan (Scan ID: \${SCAN_ID})"
-                                else
-                                    echo "⚠️  Aikido scan results not found, creating empty SARIF"
-                                    cat > build-artifacts/aikido-scan.sarif << 'SARIF_EOF'
-{
-  "\\\$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-  "version": "2.1.0",
-  "runs": [
-    {
-      "tool": {
-        "driver": {
-          "name": "Aikido Security",
-          "informationUri": "https://aikido.dev",
-          "semanticVersion": "1.0.0",
-          "organization": "Aikido"
-        }
-      },
-      "results": [],
-      "columnKind": "utf16CodeUnits"
-    }
-  ]
-}
-SARIF_EOF
-                                fi
-                            """
-
-                            archiveArtifacts artifacts: 'build-artifacts/aikido-scan.sarif', allowEmptyArchive: true
-
-                            // Register security scan with CloudBees Unify
-                            script {
-                                try {
-                                    // Aikido doesn't natively output SARIF, so we use JSON format
-                                    def aikidoJson = "build-artifacts/aikido-scan-details.json"
-                                    def aikidoSarif = "build-artifacts/aikido-scan.sarif"
-
-                                    echo "📍 Checking for Aikido scan results..."
-                                    sh "ls -la build-artifacts/ | grep aikido || echo 'No Aikido files found'"
-
-                                    // Try JSON format first (native Aikido output)
-                                    if (fileExists(aikidoJson)) {
-                                        echo "✅ Aikido JSON found at: ${aikidoJson}"
-                                        sh "wc -l ${aikidoJson}"  // Show file size
-
-                                        registerSecurityScan(
-                                            artifacts: aikidoJson,
-                                            format: 'json',
-                                            scanner: 'Aikido',  // REQUIRED for non-SARIF
-                                            archive: false
-                                        )
-                                        echo "✅ Aikido security scan registered with CloudBees Unify (JSON format)"
-                                    }
-                                    // Fallback to SARIF wrapper if JSON not available
-                                    else if (fileExists(aikidoSarif)) {
-                                        echo "⚠️  Aikido JSON not found, using SARIF wrapper..."
-                                        echo "📍 SARIF location: ${aikidoSarif}"
-
-                                        registerSecurityScan(
-                                            artifacts: aikidoSarif,
-                                            format: 'sarif',
-                                            scanner: 'Aikido',
-                                            archive: false
-                                        )
-                                        echo "✅ Aikido security scan registered with CloudBees Unify (SARIF format)"
-                                    } else {
-                                        echo "⚠️  Neither Aikido JSON nor SARIF found"
-                                        echo "⚠️  This likely means the Aikido scan didn't return a scan ID"
-                                        echo "⚠️  Check aikido-scan-output.txt for details"
-                                    }
-                                } catch (Exception e) {
-                                    echo "⚠️  Warning: Could not register security scan with CloudBees Unify: ${e.message}"
-
-                                    // Check if it's the "component not found" error
-                                    if (e.message.contains("unable to retrieve run details") ||
-                                        e.message.contains("check that the component has been created")) {
-                                        echo ""
-                                        echo ">>> COMPONENT NOT FOUND IN CLOUDBEES UNIFY <<<"
-                                        echo "=========================================="
-                                        echo "To fix this:"
-                                        echo "1. Log into CloudBees Unify"
-                                        echo "2. Navigate to: Components -> Create Component"
-                                        echo "3. Create component:"
-                                        echo "   - Name: fitness-tracker"
-                                        echo "   - Repository: https://github.com/anuddeeph2/sample-spring-boot-app"
-                                        echo "   - Type: Application"
-                                        echo "4. Create environments: 'development' and 'test'"
-                                        echo "5. Re-run this build"
-                                        echo "=========================================="
-                                    } else {
-                                        echo "⚠️  This may be due to CloudBees Unify plugin not installed or not configured"
-                                    }
-                                }
-                            }
-
-                            echo "ℹ️  Aikido Security scan completed - results archived in build artifacts"
-                            echo "   - JSON Report: build-artifacts/aikido-scan-details.json"
-                            echo "   - SARIF Report: build-artifacts/aikido-scan.sarif"
+                            def scanner = new securityScanner()
+                            scanner.convertAikidoToSARIF()
+                            scanner.publishAikidoToUnify()
                         }
                     }
                 }
@@ -516,11 +186,7 @@ SARIF_EOF
         stage('Publish Aikido to Unify') {
             steps {
                 container('maven') {
-                    script {
-                        echo "📊 Publishing Aikido security scan to CloudBees Unify..."
-                        // Already published in post block of previous stage
-                        echo "✅ Aikido scan results available in CloudBees Unify Security Insights"
-                    }
+                    echo "✅ Aikido scan results available in CloudBees Unify Security Insights"
                 }
             }
         }
@@ -528,16 +194,12 @@ SARIF_EOF
         stage('Docker Build & Push') {
             when {
                 expression {
-                    // Only build Docker image if:
-                    // 1. Previous stages succeeded
-                    // 2. Application code actually changed (not just config files)
                     (currentBuild.result == null || currentBuild.result == 'SUCCESS') &&
                     env.APP_CODE_CHANGED == 'true'
                 }
             }
             steps {
                 container('kaniko') {
-                    echo "🐳 Building Docker image with Kaniko..."
                     script {
                         withCredentials([usernamePassword(
                             credentialsId: 'dockerhub-credentials',
@@ -545,7 +207,6 @@ SARIF_EOF
                             passwordVariable: 'DOCKER_PASS'
                         )]) {
                             sh """
-                                # Create Docker config for Kaniko with base64 encoded auth
                                 AUTH=\$(echo -n "\${DOCKER_USER}:\${DOCKER_PASS}" | base64 | tr -d '\\n')
                                 cat > /kaniko/.docker/config.json <<EOF
 {
@@ -557,60 +218,32 @@ SARIF_EOF
 }
 EOF
 
-                                # Build and push with Kaniko
-                                /kaniko/executor \
-                                  --context=\$(pwd) \
-                                  --dockerfile=Dockerfile \
-                                  --destination=${IMAGE_NAME}:${IMAGE_TAG} \
-                                  --destination=${IMAGE_NAME}:${BRANCH_NAME_CLEAN}-latest \
-                                  --cache=true \
+                                /kaniko/executor \\
+                                  --context=\$(pwd) \\
+                                  --dockerfile=Dockerfile \\
+                                  --destination=${IMAGE_NAME}:${IMAGE_TAG} \\
+                                  --destination=${IMAGE_NAME}:${BRANCH_NAME_CLEAN}-latest \\
+                                  --cache=true \\
                                   --cache-repo=${IMAGE_NAME}/cache
-
-                                echo "✅ Image pushed: ${IMAGE_NAME}:${IMAGE_TAG}"
                             """
                         }
                     }
                 }
                 container('maven') {
-                    sh """
-                        echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}" >> ${ARTIFACTS_DIR}/build-info.txt
-                        echo "Registry: ${DOCKER_REGISTRY}" >> ${ARTIFACTS_DIR}/build-info.txt
-                    """
-
-                    // Register Docker artifact with CloudBees Unify immediately after push
                     script {
-                        try {
-                            echo "📦 Registering Docker artifact with CloudBees Unify..."
-                            env.DOCKER_ARTIFACT_ID = registerBuildArtifactMetadata(
-                                name: "fitness-tracker-docker",
-                                version: "${IMAGE_TAG}",
-                                url: "docker.io/${IMAGE_NAME}:${IMAGE_TAG}",
-                                type: "Docker",
-                                label: env.BRANCH_NAME == 'develop' ? 'development,latest' : 'test,stable'
-                            )
-                            echo "✅ Docker artifact registered with CloudBees Unify (ID: ${env.DOCKER_ARTIFACT_ID})"
-                        } catch (Exception e) {
-                            echo "⚠️  Warning: Failed to register Docker artifact with Unify: ${e.message}"
-                        }
-                    }
-                }
-            }
-        }
+                        sh """
+                            echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}" >> ${ARTIFACTS_DIR}/build-info.txt
+                            echo "Registry: ${DOCKER_REGISTRY}" >> ${ARTIFACTS_DIR}/build-info.txt
+                        """
 
-        stage('Publish Docker Artifact to Unify') {
-            when {
-                expression {
-                    (currentBuild.result == null || currentBuild.result == 'SUCCESS') &&
-                    env.APP_CODE_CHANGED == 'true'
-                }
-            }
-            steps {
-                container('maven') {
-                    script {
-                        echo "📊 Docker artifact published to CloudBees Unify"
-                        echo "   Artifact ID: ${env.DOCKER_ARTIFACT_ID}"
-                        echo "   Image: ${IMAGE_NAME}:${IMAGE_TAG}"
-                        echo "✅ View in Unify: Components → Artifacts → fitness-tracker-docker"
+                        def publisher = new unifyPublisher()
+                        env.DOCKER_ARTIFACT_ID = publisher.publishBuildArtifact(
+                            name: "fitness-tracker-docker",
+                            version: "${IMAGE_TAG}",
+                            url: "docker.io/${IMAGE_NAME}:${IMAGE_TAG}",
+                            type: "Docker",
+                            label: env.BRANCH_NAME == 'develop' ? 'development,latest' : 'test,stable'
+                        )
                     }
                 }
             }
@@ -619,53 +252,15 @@ EOF
         stage('Update Helm Chart') {
             when {
                 expression {
-                    // Only update Helm chart if a new Docker image was built
                     (currentBuild.result == null || currentBuild.result == 'SUCCESS') &&
                     env.APP_CODE_CHANGED == 'true'
                 }
             }
             steps {
                 container('maven') {
-                    echo "📝 Updating Helm chart with new image tag..."
                     script {
-                        // Commit and push changes for ArgoCD to pick up
-                        withCredentials([usernamePassword(
-                            credentialsId: 'github-credentials',
-                            usernameVariable: 'GIT_USER',
-                            passwordVariable: 'GIT_PASS'
-                        )]) {
-                            sh """
-                                git config user.email "ci@cloudbees.com"
-                                git config user.name "CloudBees CI"
-
-                                # Pull latest to preserve manual changes (e.g., replicaCount)
-                                echo "Pulling latest changes from ${env.BRANCH_NAME}..."
-                                git pull --rebase https://\${GIT_USER}:\${GIT_PASS}@github.com/anuddeeph2/sample-spring-boot-app.git ${env.BRANCH_NAME} || {
-                                    echo "⚠️  Pull failed, aborting rebase and continuing"
-                                    git rebase --abort 2>/dev/null || true
-                                }
-
-                                # Update image tag in values.yaml
-                                cd k8s/helm-chart
-                                sed -i.bak 's|tag: .*|tag: ${IMAGE_TAG}|' values.yaml
-                                sed -i.bak 's|repository: .*|repository: ${IMAGE_NAME}|' values.yaml
-                                rm -f values.yaml.bak
-
-                                echo "Updated values.yaml:"
-                                cat values.yaml | grep -A 3 'image:'
-
-                                # Save Helm values to artifacts
-                                cp values.yaml ${ARTIFACTS_DIR}/helm-values.yaml
-                                cd ../..
-
-                                # Commit and push
-                                git add k8s/helm-chart/values.yaml
-                                git commit -m "Update image tag to ${IMAGE_TAG} [skip ci]" || echo "No changes to commit"
-
-                                echo "Pushing to ${env.BRANCH_NAME}..."
-                                git push https://\${GIT_USER}:\${GIT_PASS}@github.com/anuddeeph2/sample-spring-boot-app.git HEAD:${env.BRANCH_NAME} || echo "⚠️  Push failed"
-                            """
-                        }
+                        def helper = new buildHelper()
+                        helper.updateHelmChart(env.IMAGE_TAG, env.IMAGE_NAME)
                     }
                 }
             }
@@ -674,47 +269,6 @@ EOF
         stage('ArgoCD Deployment') {
             when {
                 expression {
-                    // Only trigger ArgoCD if new image was built and Helm chart updated
-                    (currentBuild.result == null || currentBuild.result == 'SUCCESS') &&
-                    env.APP_CODE_CHANGED == 'true'
-                }
-            }
-            steps {
-                container('maven') {
-                    script {
-                        def argoApp = ''
-                        switch(env.BRANCH_NAME) {
-                            case 'develop':
-                                argoApp = 'fitness-tracker-dev'
-                                break
-                            case 'main':
-                            case 'master':
-                                argoApp = 'fitness-tracker-test'
-                                break
-                            default:
-                                echo "⚠️ No ArgoCD app configured for branch ${env.BRANCH_NAME}"
-                                return
-                        }
-
-                        if (argoApp) {
-                            echo "🔄 ArgoCD will auto-sync application: ${argoApp}"
-                            echo "📦 Image deployed: ${IMAGE_NAME}:${IMAGE_TAG}"
-                            echo "⏱️  ArgoCD typically syncs within 3 minutes"
-
-                            sh """
-                                echo "ArgoCD App: ${argoApp}" >> ${ARTIFACTS_DIR}/build-info.txt
-                                echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}" >> ${ARTIFACTS_DIR}/build-info.txt
-                            """
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Verify ArgoCD Sync') {
-            when {
-                expression {
-                    // Only verify if deployment happened
                     (currentBuild.result == null || currentBuild.result == 'SUCCESS') &&
                     env.APP_CODE_CHANGED == 'true'
                 }
@@ -723,38 +277,12 @@ EOF
                 container('maven') {
                     script {
                         def argoApp = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev' : 'fitness-tracker-test'
-                        def argoNamespace = 'argocd'
-                        echo "⏳ Waiting for ArgoCD to sync ${argoApp} with image ${IMAGE_TAG}..."
+                        echo "🔄 ArgoCD will auto-sync application: ${argoApp}"
+                        echo "📦 Image deployed: ${IMAGE_NAME}:${IMAGE_TAG}"
+
                         sh """
-                            APISERVER=https://kubernetes.default.svc
-                            SERVICEACCOUNT=/var/run/secrets/kubernetes.io/serviceaccount
-                            TOKEN=\$(cat \${SERVICEACCOUNT}/token)
-                            CACERT=\${SERVICEACCOUNT}/ca.crt
-
-                            MAX_ATTEMPTS=20
-                            ATTEMPT=0
-                            while [ \$ATTEMPT -lt \$MAX_ATTEMPTS ]; do
-                                ATTEMPT=\$((ATTEMPT + 1))
-                                echo "[\$ATTEMPT/\$MAX_ATTEMPTS] Checking ArgoCD sync status..."
-
-                                SYNC_STATUS=\$(kubectl --server=\$APISERVER --token=\$TOKEN --certificate-authority=\$CACERT \\
-                                    get app ${argoApp} -n ${argoNamespace} -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "Unknown")
-                                DEPLOYED_IMAGE=\$(kubectl --server=\$APISERVER --token=\$TOKEN --certificate-authority=\$CACERT \\
-                                    get app ${argoApp} -n ${argoNamespace} -o jsonpath='{.status.summary.images[0]}' 2>/dev/null || echo "")
-
-                                echo "  Sync Status: \$SYNC_STATUS"
-                                echo "  Deployed Image: \$DEPLOYED_IMAGE"
-
-                                if [ "\$SYNC_STATUS" = "Synced" ] && echo "\$DEPLOYED_IMAGE" | grep -q "${IMAGE_TAG}"; then
-                                    echo "✅ ArgoCD successfully synced with correct image!"
-                                    exit 0
-                                fi
-
-                                sleep 10
-                            done
-
-                            echo "⚠️ Timeout waiting for ArgoCD sync, continuing anyway (non-blocking)"
-                            exit 0
+                            echo "ArgoCD App: ${argoApp}" >> ${ARTIFACTS_DIR}/build-info.txt
+                            echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}" >> ${ARTIFACTS_DIR}/build-info.txt
                         """
                     }
                 }
@@ -764,7 +292,6 @@ EOF
         stage('Wait for Deployment') {
             when {
                 expression {
-                    // Only wait if deployment happened
                     (currentBuild.result == null || currentBuild.result == 'SUCCESS') &&
                     env.APP_CODE_CHANGED == 'true'
                 }
@@ -772,30 +299,20 @@ EOF
             steps {
                 container('maven') {
                     script {
-                        def argoApp = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev' : 'fitness-tracker-test'
                         def appNamespace = env.BRANCH_NAME == 'develop' ? 'dev' : 'test'
+                        def clusterIp = env.BRANCH_NAME == 'develop' ? '172.18.0.5' : '172.18.0.8'
+                        def targetServer = "https://${clusterIp}:6443"
                         def ingressHost = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev.local' : 'fitness-tracker-test.local'
                         def ingressPort = env.BRANCH_NAME == 'develop' ? '8081' : '8082'
-                        def ingressUrl = "http://${ingressHost}:${ingressPort}"
 
-                        // Query actual NodePort from the service using server URL
-                        def clusterIp = env.BRANCH_NAME == 'develop' ? '172.18.0.5' : '172.18.0.8'
-                        def targetServer = env.BRANCH_NAME == 'develop' ? 'https://172.18.0.5:6443' : 'https://172.18.0.8:6443'
                         def actualNodePort = sh(
                             script: "kubectl --server=${targetServer} --token=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/token) --certificate-authority=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt -n ${appNamespace} get svc fitness-tracker -o jsonpath='{.spec.ports[0].nodePort}'",
                             returnStdout: true
                         ).trim()
 
-                        def nodePortUrl = "http://${clusterIp}:${actualNodePort}"
-
-                        env.HEALTH_CHECK_URL = nodePortUrl  // NodePort for quick health checks from Jenkins
-                        env.APP_URL = ingressUrl  // Ingress URL for JMeter/ZAP load tests
-                        env.EXTERNAL_URL = ingressUrl  // Display ingress URL to users
-
-                        echo "📍 ArgoCD App: ${argoApp}"
-                        echo "📍 Namespace: ${appNamespace}"
-                        echo "📍 Health Check URL: ${nodePortUrl}"
-                        echo "📍 Load Test URL: ${ingressUrl}"
+                        env.HEALTH_CHECK_URL = "http://${clusterIp}:${actualNodePort}"
+                        env.APP_URL = "http://${ingressHost}:${ingressPort}"
+                        env.EXTERNAL_URL = env.APP_URL
 
                         sh """
                             TARGET_SERVER="${targetServer}"
@@ -803,9 +320,6 @@ EOF
                             EXPECTED_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
                             SA_TOKEN=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
                             CA_CERT=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-
-                            echo "Expected Image: \$EXPECTED_IMAGE"
-                            echo "Target: \$TARGET_SERVER / \$TARGET_NAMESPACE"
 
                             MAX_ATTEMPTS=30
                             ATTEMPT=0
@@ -816,97 +330,51 @@ EOF
 
                                 RUNNING_IMAGE=\$(kubectl --server=\$TARGET_SERVER --token=\$SA_TOKEN --certificate-authority=\$CA_CERT -n \$TARGET_NAMESPACE get pods -l app=fitness-tracker -o jsonpath='{.items[0].spec.containers[0].image}' 2>/dev/null || echo "")
 
-                                echo "  Running Image: \$RUNNING_IMAGE"
-
                                 if [ "\$RUNNING_IMAGE" = "\$EXPECTED_IMAGE" ]; then
                                     if curl -s -f ${env.HEALTH_CHECK_URL}/actuator/health > /dev/null 2>&1; then
-                                        echo "✅ Correct image deployed and app is healthy!"
+                                        echo "✅ Deployment verified!"
                                         exit 0
-                                    else
-                                        echo "  Image correct but app not healthy yet..."
                                     fi
-                                else
-                                    echo "  Image mismatch, waiting for ArgoCD to sync..."
                                 fi
 
                                 sleep 10
                             done
 
-                            echo "❌ Deployment verification failed after 5 minutes"
                             exit 1
                         """
 
-                        // Register deployed artifact with CloudBees Unify immediately after successful deployment
-                        try {
-                            if (env.DOCKER_ARTIFACT_ID) {
-                                def targetEnv = env.BRANCH_NAME == 'develop' ? 'development' : 'test'
-                                echo "🚀 Registering deployed artifact to ${targetEnv} environment with CloudBees Unify..."
-
-                                registerDeployedArtifactMetadata(
-                                    artifactId: env.DOCKER_ARTIFACT_ID,
-                                    targetEnvironment: targetEnv,
-                                    labels: "argocd,gitops,${argoApp}"
-                                )
-
-                                echo "✅ Deployed artifact registered with CloudBees Unify (Environment: ${targetEnv})"
-                            } else {
-                                echo "⚠️  Docker artifact ID not found, skipping deployment registration"
-                            }
-                        } catch (Exception e) {
-                            echo "⚠️  Warning: Failed to register deployed artifact with Unify: ${e.message}"
+                        def publisher = new unifyPublisher()
+                        if (env.DOCKER_ARTIFACT_ID) {
+                            def targetEnv = env.BRANCH_NAME == 'develop' ? 'Development' : 'Test'
+                            publisher.publishDeployment(
+                                artifactId: env.DOCKER_ARTIFACT_ID,
+                                targetEnvironment: targetEnv,
+                                labels: "argocd,gitops"
+                            )
                         }
                     }
                 }
             }
         }
 
-        stage('Publish Deployment to Unify') {
-            when {
-                expression {
-                    (currentBuild.result == null || currentBuild.result == 'SUCCESS') &&
-                    env.APP_CODE_CHANGED == 'true'
-                }
-            }
-            steps {
-                container('maven') {
-                    script {
-                        def targetEnv = env.BRANCH_NAME == 'develop' ? 'development' : 'test'
-                        echo "📊 Deployment registered with CloudBees Unify"
-                        echo "   Environment: ${targetEnv}"
-                        echo "   Artifact ID: ${env.DOCKER_ARTIFACT_ID}"
-                        echo "   ArgoCD App: ${env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev' : 'fitness-tracker-test'}"
-                        echo "✅ View in Unify: Components → Runs → Deployments"
-                    }
-                }
-            }
-        }
-
-        // NOTE: "Install Testing Tools" stage REMOVED - tools now pre-installed in containers!
-
         stage('Prepare Test Directories') {
             when {
                 expression {
-                    // Only run tests if new deployment happened
                     (currentBuild.result == null || currentBuild.result == 'SUCCESS') &&
                     env.APP_CODE_CHANGED == 'true'
                 }
             }
             steps {
                 container('maven') {
-                    echo "📁 Creating test report directories with proper permissions..."
                     sh """
-                        # Create all test report directories in maven container
-                        # This ensures they're owned by the correct user
                         mkdir -p ${ARTIFACTS_DIR}/api-tests
                         mkdir -p ${ARTIFACTS_DIR}/jmeter-reports
                         mkdir -p ${ARTIFACTS_DIR}/zap-reports
-
-                        # Make them world-writable so other containers can write
+                        mkdir -p ${ARTIFACTS_DIR}/uipath-reports
                         chmod -R 777 ${ARTIFACTS_DIR}/api-tests
                         chmod -R 777 ${ARTIFACTS_DIR}/jmeter-reports
                         chmod -R 777 ${ARTIFACTS_DIR}/zap-reports
-
-                        echo "✅ Test directories ready"
+                        chmod -R 777 ${ARTIFACTS_DIR}/uipath-reports
                     """
                 }
             }
@@ -915,800 +383,81 @@ EOF
         stage('Run Tests in Parallel') {
             when {
                 expression {
-                    // Only run tests if deployment happened (app code changed)
                     (currentBuild.result == null || currentBuild.result == 'SUCCESS') &&
                     env.APP_CODE_CHANGED == 'true'
                 }
             }
             parallel {
-                stage('API Testing - REST Functional Tests') {
+                stage('API Testing') {
                     steps {
-                        container('maven') {
-                            echo "🧪 Running comprehensive REST API functional tests..."
-                            script {
-                                sh script: """
-                                    set -e  # Fail on any error
-
-                                    mkdir -p \${ARTIFACTS_DIR}/api-tests
-
-                                    # Use HEALTH_CHECK_URL for API tests (NodePort, works from Jenkins pod)
-                                    TEST_URL="${env.HEALTH_CHECK_URL}"
-
-                                    echo "=== REST API Functional Testing ===" | tee \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                    echo "Target: \${TEST_URL}" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                    echo "Timestamp: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                    echo "" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-
-                                    TESTS_PASSED=0
-                                    TESTS_FAILED=0
-
-                                    # Test 1: Health Endpoint - Full validation
-                                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                    echo "TEST 1: Health Endpoint (/actuator/health)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-
-                                    # Measure response time and capture response
-                                    START_TIME=\$(date +%s%3N)
-                                    HTTP_CODE=\$(curl -s -o \${ARTIFACTS_DIR}/api-tests/health-response.json -w "%{http_code}" \\
-                                        -H "Accept: application/json" \\
-                                        --connect-timeout 5 \\
-                                        --max-time 10 \\
-                                        \${TEST_URL}/actuator/health)
-                                    END_TIME=\$(date +%s%3N)
-                                    LATENCY=\$((END_TIME - START_TIME))
-
-                                    echo "  Response Code: \${HTTP_CODE}" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                    echo "  Latency: \${LATENCY}ms" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-
-                                    if [ "\${HTTP_CODE}" = "200" ]; then
-                                        echo "  ✅ HTTP Status: PASS" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                        TESTS_PASSED=\$((TESTS_PASSED + 1))
-                                    else
-                                        echo "  ❌ HTTP Status: FAIL (expected 200, got \${HTTP_CODE})" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                        TESTS_FAILED=\$((TESTS_FAILED + 1))
-                                    fi
-
-                                    # Validate response content
-                                    if grep -q '"status":"UP"' \${ARTIFACTS_DIR}/api-tests/health-response.json; then
-                                        echo "  ✅ Health Status: PASS (status=UP)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                        TESTS_PASSED=\$((TESTS_PASSED + 1))
-                                    else
-                                        echo "  ❌ Health Status: FAIL (status not UP)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                        TESTS_FAILED=\$((TESTS_FAILED + 1))
-                                    fi
-
-                                    # Validate latency SLA
-                                    if [ \${LATENCY} -lt 500 ]; then
-                                        echo "  ✅ Performance SLA: PASS (\${LATENCY}ms < 500ms)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                        TESTS_PASSED=\$((TESTS_PASSED + 1))
-                                    else
-                                        echo "  ❌ Performance SLA: FAIL (\${LATENCY}ms >= 500ms)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                        TESTS_FAILED=\$((TESTS_FAILED + 1))
-                                    fi
-
-                                    echo "" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-
-                                    # Test 2: Info Endpoint
-                                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                    echo "TEST 2: Info Endpoint (/actuator/info)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-
-                                    START_TIME=\$(date +%s%3N)
-                                    HTTP_CODE=\$(curl -s -o \${ARTIFACTS_DIR}/api-tests/info-response.json -w "%{http_code}" \\
-                                        -H "Accept: application/json" \\
-                                        --connect-timeout 5 \\
-                                        --max-time 10 \\
-                                        \${TEST_URL}/actuator/info)
-                                    END_TIME=\$(date +%s%3N)
-                                    LATENCY=\$((END_TIME - START_TIME))
-
-                                    echo "  Response Code: \${HTTP_CODE}" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                    echo "  Latency: \${LATENCY}ms" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-
-                                    if [ "\${HTTP_CODE}" = "200" ]; then
-                                        echo "  ✅ HTTP Status: PASS" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                        TESTS_PASSED=\$((TESTS_PASSED + 1))
-                                    else
-                                        echo "  ❌ HTTP Status: FAIL" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                        TESTS_FAILED=\$((TESTS_FAILED + 1))
-                                    fi
-
-                                    if [ \${LATENCY} -lt 500 ]; then
-                                        echo "  ✅ Performance SLA: PASS (\${LATENCY}ms < 500ms)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                        TESTS_PASSED=\$((TESTS_PASSED + 1))
-                                    else
-                                        echo "  ❌ Performance SLA: FAIL (\${LATENCY}ms >= 500ms)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                        TESTS_FAILED=\$((TESTS_FAILED + 1))
-                                    fi
-
-                                    echo "" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-
-                                    # Test 3: Metrics Endpoint
-                                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                    echo "TEST 3: Metrics Endpoint (/actuator/metrics)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-
-                                    START_TIME=\$(date +%s%3N)
-                                    HTTP_CODE=\$(curl -s -o \${ARTIFACTS_DIR}/api-tests/metrics-response.json -w "%{http_code}" \\
-                                        -H "Accept: application/json" \\
-                                        --connect-timeout 5 \\
-                                        --max-time 10 \\
-                                        \${TEST_URL}/actuator/metrics)
-                                    END_TIME=\$(date +%s%3N)
-                                    LATENCY=\$((END_TIME - START_TIME))
-
-                                    echo "  Response Code: \${HTTP_CODE}" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                    echo "  Latency: \${LATENCY}ms" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-
-                                    if [ "\${HTTP_CODE}" = "200" ]; then
-                                        echo "  ✅ HTTP Status: PASS" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                        TESTS_PASSED=\$((TESTS_PASSED + 1))
-                                    else
-                                        echo "  ❌ HTTP Status: FAIL" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                        TESTS_FAILED=\$((TESTS_FAILED + 1))
-                                    fi
-
-                                    # Validate metrics response has names array
-                                    if grep -q '"names"' \${ARTIFACTS_DIR}/api-tests/metrics-response.json; then
-                                        echo "  ✅ Response Content: PASS (contains metrics names)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                        TESTS_PASSED=\$((TESTS_PASSED + 1))
-                                    else
-                                        echo "  ❌ Response Content: FAIL (missing metrics names)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                        TESTS_FAILED=\$((TESTS_FAILED + 1))
-                                    fi
-
-                                    if [ \${LATENCY} -lt 1000 ]; then
-                                        echo "  ✅ Performance SLA: PASS (\${LATENCY}ms < 1000ms)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                        TESTS_PASSED=\$((TESTS_PASSED + 1))
-                                    else
-                                        echo "  ❌ Performance SLA: FAIL (\${LATENCY}ms >= 1000ms)" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                        TESTS_FAILED=\$((TESTS_FAILED + 1))
-                                    fi
-
-                                    echo "" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                    echo "SUMMARY:" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                    echo "  Total Tests: \$((TESTS_PASSED + TESTS_FAILED))" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                    echo "  Passed: \${TESTS_PASSED}" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                    echo "  Failed: \${TESTS_FAILED}" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-                                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
-
-                                    # Add to build info
-                                    echo "=== REST API Functional Testing ===" >> \${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Target URL: \${APP_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Tests Passed: \${TESTS_PASSED}" >> \${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Tests Failed: \${TESTS_FAILED}" >> \${ARTIFACTS_DIR}/build-info.txt
-
-                                    # FAIL THE BUILD if any tests failed
-                                    if [ \${TESTS_FAILED} -gt 0 ]; then
-                                        echo "❌ API tests failed! Check test-results.txt for details."
-                                        exit 1
-                                    fi
-
-                                    echo "✅ All API functional tests passed!"
-                                """, returnStdout: false
-                            }
+                        script {
+                            def executor = new testExecutor()
+                            executor.runAPITests()
                         }
                     }
                     post {
                         always {
-                            // Archive all API test results and response files
-                            archiveArtifacts artifacts: 'build-artifacts/api-tests/**/*', allowEmptyArchive: true
-
-                            // Also create an HTML version of the test results for easy viewing
                             script {
-                                sh """
-                                    if [ -f "\${ARTIFACTS_DIR}/api-tests/test-results.txt" ]; then
-                                        cat > \${ARTIFACTS_DIR}/api-tests/index.html << 'HTMLEOF'
-<!DOCTYPE html>
-<html>
-<head>
-    <title>API Functional Test Results</title>
-    <style>
-        body { font-family: monospace; background: #1e1e1e; color: #d4d4d4; padding: 20px; }
-        pre { background: #252526; padding: 20px; border-radius: 5px; overflow-x: auto; }
-        .pass { color: #4ec9b0; }
-        .fail { color: #f48771; }
-        h1 { color: #569cd6; }
-    </style>
-</head>
-<body>
-    <h1>🧪 REST API Functional Test Results</h1>
-    <p>Build: ${BUILD_NUMBER} | Branch: ${BRANCH_NAME}</p>
-    <pre>
-HTMLEOF
-                                        cat \${ARTIFACTS_DIR}/api-tests/test-results.txt | sed 's/✅/<span class="pass">✅<\\/span>/g' | sed 's/❌/<span class="fail">❌<\\/span>/g' >> \${ARTIFACTS_DIR}/api-tests/index.html
-                                        echo '</pre></body></html>' >> \${ARTIFACTS_DIR}/api-tests/index.html
-                                    fi
-                                """
-                            }
-
-                            // Publish HTML report
-                            script {
-                                try {
-                                    publishHTML(target: [
-                                        allowMissing: true,
-                                        alwaysLinkToLastBuild: true,
-                                        keepAll: true,
-                                        reportDir: 'build-artifacts/api-tests',
-                                        reportFiles: 'index.html',
-                                        reportName: 'API Functional Tests'
-                                    ])
-                                } catch (Exception e) {
-                                    echo "⚠️  Warning: Failed to publish API test HTML report: ${e.message}"
-                                }
+                                def reporter = new testReporter()
+                                reporter.archiveAPITests()
                             }
                         }
                     }
                 }
 
-                stage('Performance Testing - JMeter') {
+                stage('Performance Testing') {
                     steps {
-                        container('jmeter') {
-                            echo "⚡ Running comprehensive JMeter performance tests..."
-                            script {
-                                sh script: """
-                                    set -e  # Fail on any error
-
-                                    if [ ! -f "tests/jmeter/fitness-tracker-load-test.jmx" ]; then
-                                        echo "❌ JMeter test plan not found!"
-                                        exit 1
-                                    fi
-
-                                    # Use HEALTH_CHECK_URL for JMeter (NodePort URL that works from pods)
-                                    echo "Running JMeter load test against \${HEALTH_CHECK_URL}..."
-                                    echo "Configuration: 50 threads, 30s ramp-up, 120s duration"
-
-                                    # Extract host and port from HEALTH_CHECK_URL for JMeter
-                                    TARGET_HOST=\$(echo "\${HEALTH_CHECK_URL}" | sed -E 's|https?://([^:/]+).*|\\1|')
-                                    TARGET_PORT=\$(echo "\${HEALTH_CHECK_URL}" | sed -E 's|https?://[^:]+:([0-9]+).*|\\1|')
-
-                                    # If port extraction didn't work (no port in URL), use default 80
-                                    if [ "\${TARGET_PORT}" = "\${APP_URL}" ]; then
-                                        TARGET_PORT=80
-                                    fi
-
-                                    echo "Extracted TARGET_HOST=\${TARGET_HOST}, TARGET_PORT=\${TARGET_PORT}"
-
-                                    # Run JMeter with production-level load (50 threads)
-                                    jmeter -n \\
-                                        -t tests/jmeter/fitness-tracker-load-test.jmx \\
-                                        -JTARGET_HOST=\${TARGET_HOST} \\
-                                        -JTARGET_PORT=\${TARGET_PORT} \\
-                                        -JTHREADS=50 \\
-                                        -JRAMP_UP=30 \\
-                                        -JDURATION=120 \\
-                                        -l \${ARTIFACTS_DIR}/jmeter-reports/results.jtl \\
-                                        -j \${ARTIFACTS_DIR}/jmeter-reports/jmeter.log \\
-                                        -e -o \${ARTIFACTS_DIR}/jmeter-reports/html
-
-                                    echo "✅ JMeter test execution completed"
-
-                                    # Generate comprehensive performance metrics
-                                    if [ -f "\${ARTIFACTS_DIR}/jmeter-reports/results.jtl" ]; then
-                                        echo "📊 Analyzing performance metrics..."
-
-                                        # Debug: Show first few lines of CSV
-                                        echo "DEBUG: First 5 lines of JMeter results:"
-                                        head -5 "\${ARTIFACTS_DIR}/jmeter-reports/results.jtl" || true
-
-                                        # Enhanced awk script for detailed metrics
-                                        cat > /tmp/jmeter-analyze.awk << 'AWKEOF'
-BEGIN {
-    FS=","
-    count=0
-    sum=0
-    min=999999
-    max=0
-    success=0
-    failed=0
-}
-NR>1 {
-    elapsed=int(\$2)
-    latency=int(\$11)
-    connect=int(\$13)
-
-    # Response time stats
-    sum+=elapsed
-    count++
-    if(elapsed>max) max=elapsed
-    if(elapsed<min) min=elapsed
-
-    # Store values for percentile calculation (simplified)
-    times[count]=elapsed
-    latencies[count]=latency
-    connections[count]=connect
-
-    # Success/failure tracking
-    # Column 8 is the success field (true/false)
-    if(\$8=="true") success++
-    else {
-        failed++
-        # Column 4 is responseCode, column 5 is responseMessage
-        failures[\$4]=(\$4 in failures) ? failures[\$4]+1 : 1
-    }
-
-    # Throughput calculation (bytes)
-    # Column 9 is bytes sent, column 10 is bytes received
-    bytes_sent+=int(\$10)
-    bytes_received+=int(\$9)
-}
-END {
-    if(count==0) {
-        print "No data to analyze"
-        exit 1
-    }
-
-    avg=sum/count
-    success_rate=(success*100/count)
-
-    # Calculate approximate percentiles (simplified for shell)
-    p50_idx=int(count*0.50)
-    p90_idx=int(count*0.90)
-    p95_idx=int(count*0.95)
-    p99_idx=int(count*0.99)
-
-    print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    print "PERFORMANCE METRICS SUMMARY"
-    print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    print ""
-    print "Request Statistics:"
-    print "  Total Requests: " count
-    print "  Successful: " success " (" success_rate "%)"
-    print "  Failed: " failed " (" (failed*100/count) "%)"
-    print ""
-    print "Response Time (ms):"
-    print "  Minimum: " min
-    print "  Maximum: " max
-    print "  Average: " sprintf("%.2f", avg)
-    print "  ~50th Percentile: " times[p50_idx]
-    print "  ~90th Percentile: " times[p90_idx]
-    print "  ~95th Percentile: " times[p95_idx]
-    print "  ~99th Percentile: " times[p99_idx]
-    print ""
-    print "Throughput:"
-    print "  Requests/sec: " sprintf("%.2f", count/120)
-    print "  Data Sent: " sprintf("%.2f KB", bytes_sent/1024)
-    print "  Data Received: " sprintf("%.2f KB", bytes_received/1024)
-    print ""
-    if(failed>0) {
-        print "Error Analysis:"
-        for(code in failures) {
-            print "  HTTP " code ": " failures[code] " failures"
-        }
-        print ""
-    }
-    print "Health Assessment:"
-    if(success_rate >= 99.9) print "  ✅ EXCELLENT - 99.9%+ success rate"
-    else if(success_rate >= 99) print "  ✅ GOOD - 99%+ success rate"
-    else if(success_rate >= 95) print "  ⚠️  WARNING - Below 99% success rate"
-    else print "  ❌ CRITICAL - Below 95% success rate"
-
-    if(avg < 500) print "  ✅ EXCELLENT - Avg latency < 500ms"
-    else if(avg < 1000) print "  ⚠️  WARNING - Avg latency > 500ms"
-    else print "  ❌ CRITICAL - Avg latency > 1000ms"
-
-    print "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
-    # Export metrics for parsing
-    print "METRIC:success_rate=" success_rate
-    print "METRIC:avg_response_time=" avg
-    print "METRIC:max_response_time=" max
-    print "METRIC:failed_count=" failed
-}
-AWKEOF
-
-                                        # Run AWK script for response time metrics first
-                                        awk -f /tmp/jmeter-analyze.awk \${ARTIFACTS_DIR}/jmeter-reports/results.jtl > \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-
-                                        # Use grep to accurately count success/failure (handles CSV with quotes properly)
-                                        echo "🔍 Counting success/failure with grep (CSV-safe)..."
-                                        TRUE_SUCCESS=\$(grep -c ',true,' \${ARTIFACTS_DIR}/jmeter-reports/results.jtl || echo 0)
-                                        TRUE_FAILURE=\$(grep -c ',false,' \${ARTIFACTS_DIR}/jmeter-reports/results.jtl || echo 0)
-                                        TOTAL=\$((TRUE_SUCCESS + TRUE_FAILURE))
-
-                                        if [ \$TOTAL -gt 0 ]; then
-                                            ACCURATE_SUCCESS_RATE=\$(echo "scale=4; (\$TRUE_SUCCESS * 100) / \$TOTAL" | bc 2>/dev/null || echo "0")
-                                            echo ""
-                                            echo "✅ Accurate Success/Failure Count (grep-based, CSV-safe):"
-                                            echo "   Total: \$TOTAL requests"
-                                            echo "   Success: \$TRUE_SUCCESS (\${ACCURATE_SUCCESS_RATE}%)"
-                                            echo "   Failure: \$TRUE_FAILURE"
-                                            echo ""
-
-                                            # Append accurate counts to report
-                                            echo "" >> \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-                                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-                                            echo "ACCURATE COUNT (grep-based, CSV-safe):" >> \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-                                            echo "  Total: \$TOTAL" >> \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-                                            echo "  Success: \$TRUE_SUCCESS (\${ACCURATE_SUCCESS_RATE}%)" >> \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-                                            echo "  Failure: \$TRUE_FAILURE" >> \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-                                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-                                            echo "METRIC:success_rate=\${ACCURATE_SUCCESS_RATE}" >> \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-                                            echo "METRIC:failed_count=\${TRUE_FAILURE}" >> \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-                                        fi
-
-                                        # Display the summary
-                                        cat \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-
-                                        # Install bc for math calculations if not available
-                                        if ! command -v bc &> /dev/null; then
-                                            echo "📥 Installing bc for SLA validation..."
-                                            apk add --no-cache bc 2>/dev/null || echo "Warning: bc not available in this container"
-                                        fi
-
-                                        # Parse metrics and enforce SLAs (use tail -1 to get the accurate grep-based values)
-                                        SUCCESS_RATE=\$(grep "METRIC:success_rate=" \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt | tail -1 | cut -d'=' -f2)
-                                        AVG_TIME=\$(grep "METRIC:avg_response_time=" \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt | tail -1 | cut -d'=' -f2)
-                                        FAILED_COUNT=\$(grep "METRIC:failed_count=" \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt | tail -1 | cut -d'=' -f2)
-
-                                        echo "" | tee -a \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-                                        echo "SLA Validation:" | tee -a \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-
-                                        SLA_PASSED=true
-
-                                        # SLA 1: Success rate must be >= 65% (adjusted for actuator endpoint limitations)
-                                        if [ "\$(echo "\${SUCCESS_RATE} >= 65" | bc)" = "1" ]; then
-                                            echo "  ✅ SLA PASS: Success rate \${SUCCESS_RATE}% >= 65%" | tee -a \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-                                        else
-                                            echo "  ❌ SLA FAIL: Success rate \${SUCCESS_RATE}% < 65%" | tee -a \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-                                            SLA_PASSED=false
-                                        fi
-
-                                        # SLA 2: Average response time must be < 1000ms
-                                        if [ "\$(echo "\${AVG_TIME} < 1000" | bc)" = "1" ]; then
-                                            echo "  ✅ SLA PASS: Avg response time \${AVG_TIME}ms < 1000ms" | tee -a \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-                                        else
-                                            echo "  ❌ SLA FAIL: Avg response time \${AVG_TIME}ms >= 1000ms" | tee -a \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
-                                            SLA_PASSED=false
-                                        fi
-
-                                        # Add to build info
-                                        echo "=== JMeter Performance Testing ===" >> \${ARTIFACTS_DIR}/build-info.txt
-                                        echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
-                                        echo "Target URL: \${HEALTH_CHECK_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
-                                        echo "Load: 50 threads, 30s ramp-up, 120s duration" >> \${ARTIFACTS_DIR}/build-info.txt
-                                        echo "Success Rate: \${SUCCESS_RATE}%" >> \${ARTIFACTS_DIR}/build-info.txt
-                                        echo "Avg Response Time: \${AVG_TIME}ms" >> \${ARTIFACTS_DIR}/build-info.txt
-                                        echo "Failed Requests: \${FAILED_COUNT}" >> \${ARTIFACTS_DIR}/build-info.txt
-
-                                        # FAIL THE BUILD if SLAs not met
-                                        if [ "\${SLA_PASSED}" = "false" ]; then
-                                            echo "❌ Performance SLAs not met! See metrics-summary.txt for details."
-                                            exit 1
-                                        fi
-
-                                        echo "✅ All performance SLAs met!"
-                                    else
-                                        echo "❌ No results file generated!"
-                                        exit 1
-                                    fi
-                                """, returnStdout: false
-                            }
+                        script {
+                            def executor = new testExecutor()
+                            executor.runJMeterTests()
                         }
                     }
                     post {
                         always {
-                            // Archive all JMeter reports (HTML dashboard, JTL, logs, metrics)
-                            archiveArtifacts artifacts: 'build-artifacts/jmeter-reports/**/*', allowEmptyArchive: true
-
-                            // Archive the JMeter test plan for reference
-                            archiveArtifacts artifacts: 'tests/jmeter/*.jmx', allowEmptyArchive: true
-
-                            // Publish interactive HTML report
-                            publishHTML(target: [
-                                allowMissing: true,
-                                alwaysLinkToLastBuild: true,
-                                keepAll: true,
-                                reportDir: 'build-artifacts/jmeter-reports/html',
-                                reportFiles: 'index.html',
-                                reportName: 'JMeter Performance Report'
-                            ])
+                            script {
+                                def reporter = new testReporter()
+                                reporter.archiveJMeterReports()
+                            }
                         }
                     }
                 }
 
-                stage('Security Testing - OWASP ZAP') {
+                stage('Security Testing') {
                     steps {
-                        container('zap') {
-                            echo "🔐 Running comprehensive OWASP ZAP security scan..."
-                            script {
-                                sh script: """
-                                    set +e  # Don't fail immediately on ZAP errors (it returns non-zero on findings)
-
-                                    # Use HEALTH_CHECK_URL for ZAP (NodePort URL that works from pods)
-                                    echo "🔐 Running ZAP baseline scan against \${HEALTH_CHECK_URL}..."
-
-                                    # ZAP working directory is /zap, NOT /zap/wrk
-                                    # Use relative paths from /zap or absolute paths will be doubled
-                                    cd /zap
-                                    mkdir -p reports
-
-                                    # Run ZAP baseline scan and capture output
-                                    # Generate JSON report for SARIF conversion
-                                    ZAP_EXIT_CODE=0
-                                    zap-baseline.py \\
-                                        -t \${HEALTH_CHECK_URL}/actuator/health \\
-                                        -g baseline-config.conf \\
-                                        -J baseline-report.json \\
-                                        2>&1 | tee reports/scan-output.txt || ZAP_EXIT_CODE=\$?
-
-                                    echo "ZAP scan completed with exit code: \${ZAP_EXIT_CODE}"
-
-                                    # Parse the scan output to extract findings
-                                    echo "📊 Parsing scan results..."
-
-                                    # Extract warning counts from output (exclude summary line by looking for ' x ')
-                                    WARN_COUNT=\$(grep "^WARN-NEW:.*x " reports/scan-output.txt | wc -l || echo 0)
-                                    FAIL_COUNT=\$(grep "^FAIL-NEW:.*x " reports/scan-output.txt | wc -l || echo 0)
-                                    PASS_COUNT=\$(grep "^PASS:" reports/scan-output.txt | wc -l || echo 0)
-
-                                    # Create a summary report from the text output
-                                    cat > reports/metrics-summary.txt << SUMMARYEOF
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-SECURITY SCAN RESULTS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-Scan Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)
-Target: \${HEALTH_CHECK_URL}
-
-Alert Summary:
-  🔴 FAIL (High/Medium): \${FAIL_COUNT}
-  🟡 WARN (Low): \${WARN_COUNT}
-  ✅ PASS: \${PASS_COUNT}
-
-Detailed Findings:
-SUMMARYEOF
-
-                                    # Extract and list all warnings (exclude summary line)
-                                    if [ \${WARN_COUNT} -gt 0 ]; then
-                                        echo "" >> reports/metrics-summary.txt
-                                        echo "Warnings Found:" >> reports/metrics-summary.txt
-                                        grep "^WARN-NEW:.*x " reports/scan-output.txt | sed 's/^WARN-NEW: /  ⚠️  /' >> reports/metrics-summary.txt
-                                    fi
-
-                                    if [ \${FAIL_COUNT} -gt 0 ]; then
-                                        echo "" >> reports/metrics-summary.txt
-                                        echo "Failures Found:" >> reports/metrics-summary.txt
-                                        grep "^FAIL-NEW:.*x " reports/scan-output.txt | sed 's/^FAIL-NEW: /  ❌ /' >> reports/metrics-summary.txt
-                                    fi
-
-                                    echo "" >> reports/metrics-summary.txt
-                                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> reports/metrics-summary.txt
-                                    echo "Security Assessment:" >> reports/metrics-summary.txt
-                                    if [ \${FAIL_COUNT} -eq 0 ]; then
-                                        echo "  ✅ PASS - No high or medium severity issues found" >> reports/metrics-summary.txt
-                                        SECURITY_PASS=true
-                                    else
-                                        echo "  ❌ FAIL - Found \${FAIL_COUNT} high/medium severity issue(s)" >> reports/metrics-summary.txt
-                                        SECURITY_PASS=false
-                                    fi
-                                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> reports/metrics-summary.txt
-
-                                    # Copy reports to artifacts directory
-                                    mkdir -p \${ARTIFACTS_DIR}/zap-reports
-                                    cp -r reports/* \${ARTIFACTS_DIR}/zap-reports/ 2>/dev/null || true
-
-                                    # Display the metrics summary
-                                    cat reports/metrics-summary.txt
-
-                                    # Fail the build if critical issues found
-                                    if [ "\${SECURITY_PASS}" = "false" ]; then
-                                        echo "❌ Security scan found critical issues!"
-                                        exit 1
-                                    else
-                                        echo "✅ Security scan passed!"
-                                    fi
-                                """, returnStdout: false
-                            }
+                        script {
+                            def executor = new testExecutor()
+                            executor.runZAPTests()
                         }
                     }
                     post {
                         always {
                             container('maven') {
                                 script {
-                                    // Archive all ZAP reports (HTML, JSON, XML, Markdown, metrics)
-                                    archiveArtifacts artifacts: 'build-artifacts/zap-reports/**/*', allowEmptyArchive: true
+                                    def reporter = new testReporter()
+                                    reporter.archiveZAPReports()
 
-                                    // Publish interactive HTML security report
-                                    publishHTML(target: [
-                                        allowMissing: true,
-                                        alwaysLinkToLastBuild: true,
-                                        keepAll: true,
-                                        reportDir: 'build-artifacts/zap-reports',
-                                        reportFiles: 'baseline-report.html',
-                                        reportName: 'OWASP ZAP Security Report'
-                                    ])
-
-                                    // Convert ZAP JSON to SARIF format
-                                    sh """
-                                        # Check if ZAP JSON report exists
-                                        if [ -f "build-artifacts/zap-reports/baseline-report.json" ]; then
-                                            # Create a SARIF wrapper for ZAP results
-                                            cat > build-artifacts/zap-reports/zap-scan.sarif << 'SARIF_EOF'
-{
-  "\$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-  "version": "2.1.0",
-  "runs": [
-    {
-      "tool": {
-        "driver": {
-          "name": "OWASP ZAP",
-          "informationUri": "https://www.zaproxy.org/",
-          "version": "2.14.0"
-        }
-      },
-      "results": [],
-      "properties": {
-        "sourceFile": "baseline-report.json"
-      }
-    }
-  ]
-}
-SARIF_EOF
-                                            echo "✅ Created SARIF format for ZAP scan"
-                                        else
-                                            echo "⚠️  ZAP JSON report not found"
-                                        fi
-                                    """
-
-                                    archiveArtifacts artifacts: 'build-artifacts/zap-reports/zap-scan.sarif', allowEmptyArchive: true
-
-                                    // Register ZAP security scan with CloudBees Unify
-                                    try {
-                                        if (fileExists('build-artifacts/zap-reports/zap-scan.sarif')) {
-                                            registerSecurityScan(
-                                                artifacts: 'build-artifacts/zap-reports/zap-scan.sarif',
-                                                format: 'sarif',
-                                                scanner: 'OWASP ZAP',
-                                                archive: true
-                                            )
-                                            echo "✅ OWASP ZAP security scan registered with CloudBees Unify"
-                                        } else {
-                                            echo "⚠️  ZAP SARIF file not found, skipping Unify registration"
-                                        }
-                                    } catch (Exception e) {
-                                        echo "⚠️  Warning: Could not register ZAP security scan with CloudBees Unify: ${e.message}"
-                                    }
-
-                                    echo "ℹ️  OWASP ZAP Security scan completed - results archived in build artifacts"
-                                    echo "   - JSON Report: build-artifacts/zap-reports/baseline-report.json"
-                                    echo "   - SARIF Report: build-artifacts/zap-reports/zap-scan.sarif"
-                                    echo "   - HTML Report: build-artifacts/zap-reports/baseline-report.html"
+                                    def scanner = new securityScanner()
+                                    scanner.convertZAPToSARIF()
+                                    scanner.publishZAPToUnify()
                                 }
                             }
                         }
                     }
                 }
 
-                stage('UI Testing - UiPath') {
+                stage('UI Testing') {
                     steps {
-                        container('uipath') {
-                            echo "🤖 Running UiPath UI automation tests..."
-                            script {
-                                sh script: """
-                                    set -e
-
-                                    mkdir -p \${ARTIFACTS_DIR}/uipath-reports
-
-                                    # Install UiPath CLI dependencies
-                                    echo "📦 Installing UiPath test dependencies..."
-                                    pip3 install --quiet requests selenium pytest pytest-html > /dev/null 2>&1
-
-                                    # Use HEALTH_CHECK_URL for UI tests
-                                    TEST_URL="\${HEALTH_CHECK_URL}"
-
-                                    echo "=== UiPath UI Automation Tests ===" | tee \${ARTIFACTS_DIR}/uipath-reports/test-results.txt
-                                    echo "Target: \${TEST_URL}" | tee -a \${ARTIFACTS_DIR}/uipath-reports/test-results.txt
-                                    echo "Timestamp: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" | tee -a \${ARTIFACTS_DIR}/uipath-reports/test-results.txt
-                                    echo "" | tee -a \${ARTIFACTS_DIR}/uipath-reports/test-results.txt
-
-                                    # Create a simple Python-based UI test (simulating UiPath workflows)
-                                    cat > /tmp/ui_test.py << 'PYTEST_EOF'
-import requests
-import pytest
-import json
-from datetime import datetime
-
-BASE_URL = "\${TEST_URL}"
-
-class TestUIAutomation:
-    """Simulated UiPath UI automation tests"""
-
-    def test_health_endpoint_ui_workflow(self):
-        """Test 1: Health endpoint UI workflow"""
-        response = requests.get(f"{BASE_URL}/actuator/health", timeout=10)
-        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
-        assert response.json()["status"] == "UP", "Health status is not UP"
-
-    def test_info_endpoint_ui_workflow(self):
-        """Test 2: Info endpoint UI workflow"""
-        response = requests.get(f"{BASE_URL}/actuator/info", timeout=10)
-        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
-
-    def test_metrics_endpoint_ui_workflow(self):
-        """Test 3: Metrics endpoint UI workflow"""
-        response = requests.get(f"{BASE_URL}/actuator/metrics", timeout=10)
-        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
-        data = response.json()
-        assert "names" in data, "Metrics response missing 'names' field"
-        assert len(data["names"]) > 0, "No metrics available"
-
-    def test_response_time_sla(self):
-        """Test 4: Response time SLA validation"""
-        import time
-        start = time.time()
-        response = requests.get(f"{BASE_URL}/actuator/health", timeout=10)
-        elapsed = (time.time() - start) * 1000
-        assert elapsed < 1000, f"Response time {elapsed}ms exceeds 1000ms SLA"
-        assert response.status_code == 200
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v", "--html=/tmp/uipath-report.html", "--self-contained-html"])
-PYTEST_EOF
-
-                                    # Run pytest with JUnit XML output for CloudBees Unify
-                                    cd /tmp
-                                    pytest ui_test.py -v \\
-                                        --junitxml=\${ARTIFACTS_DIR}/uipath-reports/uipath-junit.xml \\
-                                        --html=\${ARTIFACTS_DIR}/uipath-reports/uipath-report.html \\
-                                        --self-contained-html \\
-                                        2>&1 | tee -a \${ARTIFACTS_DIR}/uipath-reports/test-results.txt
-
-                                    # Parse results
-                                    if [ -f "\${ARTIFACTS_DIR}/uipath-reports/uipath-junit.xml" ]; then
-                                        TOTAL_TESTS=\$(grep -o 'tests="[0-9]*"' \${ARTIFACTS_DIR}/uipath-reports/uipath-junit.xml | head -1 | grep -o '[0-9]*')
-                                        FAILED_TESTS=\$(grep -o 'failures="[0-9]*"' \${ARTIFACTS_DIR}/uipath-reports/uipath-junit.xml | head -1 | grep -o '[0-9]*')
-                                        PASSED_TESTS=\$((TOTAL_TESTS - FAILED_TESTS))
-
-                                        echo "" | tee -a \${ARTIFACTS_DIR}/uipath-reports/test-results.txt
-                                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a \${ARTIFACTS_DIR}/uipath-reports/test-results.txt
-                                        echo "SUMMARY:" | tee -a \${ARTIFACTS_DIR}/uipath-reports/test-results.txt
-                                        echo "  Total Tests: \${TOTAL_TESTS}" | tee -a \${ARTIFACTS_DIR}/uipath-reports/test-results.txt
-                                        echo "  Passed: \${PASSED_TESTS}" | tee -a \${ARTIFACTS_DIR}/uipath-reports/test-results.txt
-                                        echo "  Failed: \${FAILED_TESTS}" | tee -a \${ARTIFACTS_DIR}/uipath-reports/test-results.txt
-                                        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a \${ARTIFACTS_DIR}/uipath-reports/test-results.txt
-
-                                        # Add to build info
-                                        echo "=== UiPath UI Automation Testing ===" >> \${ARTIFACTS_DIR}/build-info.txt
-                                        echo "Test Date: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
-                                        echo "Target URL: \${TEST_URL}" >> \${ARTIFACTS_DIR}/build-info.txt
-                                        echo "Tests Passed: \${PASSED_TESTS}" >> \${ARTIFACTS_DIR}/build-info.txt
-                                        echo "Tests Failed: \${FAILED_TESTS}" >> \${ARTIFACTS_DIR}/build-info.txt
-
-                                        # Fail if any tests failed
-                                        if [ "\${FAILED_TESTS}" -gt 0 ]; then
-                                            echo "❌ UiPath UI tests failed!"
-                                            exit 1
-                                        fi
-
-                                        echo "✅ All UiPath UI automation tests passed!"
-                                    else
-                                        echo "❌ No test results generated!"
-                                        exit 1
-                                    fi
-                                """, returnStdout: false
-                            }
+                        script {
+                            def executor = new testExecutor()
+                            executor.runUITests()
                         }
                     }
                     post {
                         always {
-                            // Archive all UiPath test results
-                            archiveArtifacts artifacts: 'build-artifacts/uipath-reports/**/*', allowEmptyArchive: true
-
-                            // Publish JUnit results
-                            junit allowEmptyResults: true, testResults: 'build-artifacts/uipath-reports/uipath-junit.xml'
-
-                            // Publish HTML report
-                            publishHTML(target: [
-                                allowMissing: true,
-                                alwaysLinkToLastBuild: true,
-                                keepAll: true,
-                                reportDir: 'build-artifacts/uipath-reports',
-                                reportFiles: 'uipath-report.html',
-                                reportName: 'UiPath UI Tests'
-                            ])
+                            script {
+                                def reporter = new testReporter()
+                                reporter.archiveUITests()
+                            }
                         }
                     }
                 }
@@ -1716,84 +465,38 @@ PYTEST_EOF
                 stage('Consolidate Test Metrics') {
                     steps {
                         container('maven') {
-                            echo "📊 Consolidating test metrics and results..."
-                            script {
-                                sh """
-                                    # Write consolidated test info to build-info.txt
-                                    echo "" >> \${ARTIFACTS_DIR}/build-info.txt
-                                    echo "=== Test Execution Summary ===" >> \${ARTIFACTS_DIR}/build-info.txt
-                                    echo "Timestamp: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
+                            sh """
+                                echo "" >> \${ARTIFACTS_DIR}/build-info.txt
+                                echo "=== Test Execution Summary ===" >> \${ARTIFACTS_DIR}/build-info.txt
+                                echo "Timestamp: \$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> \${ARTIFACTS_DIR}/build-info.txt
 
-                                    # Add JMeter metrics
-                                    if [ -f "\${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt" ]; then
-                                        echo "" >> \${ARTIFACTS_DIR}/build-info.txt
-                                        cat \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt >> \${ARTIFACTS_DIR}/build-info.txt
-                                    fi
+                                if [ -f "\${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt" ]; then
+                                    cat \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt >> \${ARTIFACTS_DIR}/build-info.txt
+                                fi
 
-                                    # Add ZAP metrics
-                                    if [ -f "\${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt" ]; then
-                                        echo "" >> \${ARTIFACTS_DIR}/build-info.txt
-                                        cat \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt >> \${ARTIFACTS_DIR}/build-info.txt
-                                    fi
+                                if [ -f "\${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt" ]; then
+                                    cat \${ARTIFACTS_DIR}/zap-reports/metrics-summary.txt >> \${ARTIFACTS_DIR}/build-info.txt
+                                fi
 
-                                    # Add UiPath metrics
-                                    if [ -f "\${ARTIFACTS_DIR}/uipath-reports/test-results.txt" ]; then
-                                        echo "" >> \${ARTIFACTS_DIR}/build-info.txt
-                                        echo "=== UiPath UI Automation Test Results ===" >> \${ARTIFACTS_DIR}/build-info.txt
-                                        tail -20 \${ARTIFACTS_DIR}/uipath-reports/test-results.txt >> \${ARTIFACTS_DIR}/build-info.txt
-                                    fi
-
-                                    # Create metrics JSON for programmatic access
-                                    TIMESTAMP=\$(date -u +%Y-%m-%dT%H:%M:%SZ)
-                                    cat > \${ARTIFACTS_DIR}/metrics.json << EOF
+                                TIMESTAMP=\$(date -u +%Y-%m-%dT%H:%M:%SZ)
+                                cat > \${ARTIFACTS_DIR}/metrics.json << EOF
 {
   "build": {
     "number": "${BUILD_NUMBER}",
     "branch": "${BRANCH_NAME}",
     "image": "${IMAGE_NAME}:${IMAGE_TAG}",
     "timestamp": "\${TIMESTAMP}"
-  },
-  "storage": {
-    "location": "Jenkins Artifacts",
-    "artifacts_dir": "\${ARTIFACTS_DIR}",
-    "reports": {
-      "api_tests": "build-artifacts/api-tests/test-results.txt",
-      "jmeter": "build-artifacts/jmeter-reports/html/index.html",
-      "zap": "build-artifacts/zap-reports/baseline-report.html",
-      "uipath": "build-artifacts/uipath-reports/uipath-report.html"
-    }
   }
 }
 EOF
 
-                                    echo ""
-                                    echo "================================================"
-                                    echo "🎉 APPLICATION DEPLOYED SUCCESSFULLY"
-                                    echo "================================================"
-                                    echo "Access your application at:"
-                                    echo "  🌐 Ingress URL: \${EXTERNAL_URL}"
-                                    echo ""
-                                    echo "================================================"
-                                    echo "📊 Test Reports Storage Location:"
-                                    echo "================================================"
-                                    echo "Jenkins Build Artifacts: ${BUILD_URL}artifact/build-artifacts/"
-                                    echo ""
-                                    echo "Detailed Reports:"
-                                    echo "  - API Functional Tests: ${BUILD_URL}artifact/build-artifacts/api-tests/test-results.txt"
-                                    echo "  - JMeter Performance: ${BUILD_URL}JMeter_20Performance_20Report/"
-                                    echo "  - OWASP ZAP Security: ${BUILD_URL}OWASP_20ZAP_20Security_20Report/"
-                                    echo "  - UiPath UI Automation: ${BUILD_URL}UiPath_20UI_20Tests/"
-                                    echo "  - Full Artifacts: ${BUILD_URL}artifact/"
-                                    echo ""
-                                    echo "CloudBees Unify Integration:"
-                                    echo "  - Artifacts registered with Unify CI"
-                                    echo "  - Test results in JUnit format for analytics"
-                                    echo "  - Security scans in SARIF format"
-                                    echo ""
-                                    echo "Metrics Summary: \${ARTIFACTS_DIR}/build-info.txt"
-                                    echo "================================================"
-                                """
-                            }
+                                echo "================================================"
+                                echo "🎉 APPLICATION DEPLOYED SUCCESSFULLY"
+                                echo "================================================"
+                                echo "Access: \${EXTERNAL_URL}"
+                                echo "Reports: ${BUILD_URL}artifact/build-artifacts/"
+                                echo "================================================"
+                            """
                         }
                     }
                 }
@@ -1803,312 +506,26 @@ EOF
         stage('Collect Build Artifacts') {
             steps {
                 container('maven') {
-                    echo "📦 Collecting all build artifacts..."
                     script {
+                        def reporter = new testReporter()
+                        reporter.createTestDashboard()
+
                         sh """
-                            # Create test reports index page
-                            cat > ${ARTIFACTS_DIR}/test-reports-index.html << 'INDEXEOF'
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Test Reports - Build ${BUILD_NUMBER}</title>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            padding: 40px 20px;
-        }
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            overflow: hidden;
-        }
-        .header {
-            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-            color: white;
-            padding: 40px;
-            text-align: center;
-        }
-        .header h1 { font-size: 2.5em; margin-bottom: 10px; }
-        .header p { opacity: 0.9; font-size: 1.1em; }
-        .content { padding: 40px; }
-        .section {
-            margin-bottom: 40px;
-            padding: 30px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            border-left: 5px solid #667eea;
-        }
-        .section h2 {
-            color: #2c3e50;
-            margin-bottom: 20px;
-            font-size: 1.8em;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .reports-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-top: 20px;
-        }
-        .report-card {
-            background: white;
-            padding: 25px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-        .report-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 5px 20px rgba(0,0,0,0.2);
-        }
-        .report-card h3 {
-            color: #667eea;
-            margin-bottom: 15px;
-            font-size: 1.3em;
-        }
-        .report-card p {
-            color: #666;
-            margin-bottom: 20px;
-            line-height: 1.6;
-        }
-        .btn {
-            display: inline-block;
-            padding: 12px 24px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            text-decoration: none;
-            border-radius: 6px;
-            font-weight: 600;
-            transition: transform 0.2s;
-        }
-        .btn:hover {
-            transform: scale(1.05);
-            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-        }
-        .info-box {
-            background: #e8f4f8;
-            padding: 20px;
-            border-radius: 8px;
-            margin: 20px 0;
-            border-left: 4px solid #3498db;
-        }
-        .info-box strong { color: #2c3e50; }
-        .artifact-list {
-            list-style: none;
-            margin-top: 15px;
-        }
-        .artifact-list li {
-            padding: 12px;
-            margin-bottom: 8px;
-            background: white;
-            border-radius: 6px;
-            border-left: 3px solid #667eea;
-        }
-        .artifact-list a {
-            color: #667eea;
-            text-decoration: none;
-            font-weight: 500;
-        }
-        .artifact-list a:hover { text-decoration: underline; }
-        .badge {
-            display: inline-block;
-            padding: 4px 12px;
-            background: #667eea;
-            color: white;
-            border-radius: 12px;
-            font-size: 0.85em;
-            font-weight: 600;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>📊 Test Reports Dashboard</h1>
-            <p>Build #${BUILD_NUMBER} | Branch: ${BRANCH_NAME} | ${IMAGE_TAG}</p>
-        </div>
-
-        <div class="content">
-            <div class="section">
-                <h2>🧪 Test Reports</h2>
-                <div class="reports-grid">
-                    <div class="report-card">
-                        <h3>API Functional Tests</h3>
-                        <p>REST API endpoint validation with latency measurement and health checks.</p>
-                        <span class="badge">Functional</span>
-                        <br><br>
-                        <a href="api-tests/index.html" class="btn">View Report</a>
-                    </div>
-
-                    <div class="report-card">
-                        <h3>JMeter Performance</h3>
-                        <p>Load testing with 50 concurrent users. Includes response time percentiles and throughput analysis.</p>
-                        <span class="badge">Performance</span>
-                        <br><br>
-                        <a href="jmeter-reports/html/index.html" class="btn">View Report</a>
-                    </div>
-
-                    <div class="report-card">
-                        <h3>OWASP ZAP Security</h3>
-                        <p>Security vulnerability scan with detailed findings and remediation guidance.</p>
-                        <span class="badge">Security</span>
-                        <br><br>
-                        <a href="zap-reports/baseline-report.html" class="btn">View Report</a>
-                    </div>
-
-                    <div class="report-card">
-                        <h3>UiPath UI Automation</h3>
-                        <p>UI workflow automation tests validating end-to-end user journeys.</p>
-                        <span class="badge">UI/RPA</span>
-                        <br><br>
-                        <a href="uipath-reports/uipath-report.html" class="btn">View Report</a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="section">
-                <h2>📄 Raw Artifacts</h2>
-                <ul class="artifact-list">
-                    <li><a href="api-tests/test-results.txt">API Test Results (TXT)</a></li>
-                    <li><a href="api-tests/health-response.json">Health Endpoint Response (JSON)</a></li>
-                    <li><a href="api-tests/info-response.json">Info Endpoint Response (JSON)</a></li>
-                    <li><a href="api-tests/metrics-response.json">Metrics Endpoint Response (JSON)</a></li>
-                    <li><a href="jmeter-reports/results.jtl">JMeter Raw Results (JTL)</a></li>
-                    <li><a href="jmeter-reports/metrics-summary.txt">JMeter Metrics Summary (TXT)</a></li>
-                    <li><a href="jmeter-reports/jmeter.log">JMeter Execution Log</a></li>
-                    <li><a href="zap-reports/baseline-report.json">ZAP Report (JSON)</a></li>
-                    <li><a href="zap-reports/baseline-report.xml">ZAP Report (XML)</a></li>
-                    <li><a href="zap-reports/baseline-report.md">ZAP Report (Markdown)</a></li>
-                    <li><a href="zap-reports/metrics-summary.txt">ZAP Metrics Summary (TXT)</a></li>
-                    <li><a href="uipath-reports/test-results.txt">UiPath Test Results (TXT)</a></li>
-                    <li><a href="uipath-reports/uipath-junit.xml">UiPath Results (JUnit XML)</a></li>
-                    <li><a href="uipath-reports/uipath-report.html">UiPath HTML Report</a></li>
-                    <li><a href="build-info.txt">Consolidated Build Info</a></li>
-                    <li><a href="metrics.json">Metrics JSON</a></li>
-                    <li><a href="ci-analytics.json">CI Analytics Data (for CloudBees Unify)</a></li>
-                </ul>
-            </div>
-
-            <div class="section">
-                <h2>📦 Build Information</h2>
-                <div class="info-box">
-                    <p><strong>Build Number:</strong> ${BUILD_NUMBER}</p>
-                    <p><strong>Branch:</strong> ${BRANCH_NAME}</p>
-                    <p><strong>Image:</strong> ${IMAGE_NAME}:${IMAGE_TAG}</p>
-                    <p><strong>Build URL:</strong> <a href="${BUILD_URL}">${BUILD_URL}</a></p>
-                </div>
-            </div>
-
-            <div class="section">
-                <h2>📚 Documentation</h2>
-                <ul class="artifact-list">
-                    <li><a href="../tests/COMPREHENSIVE-TESTING-GUIDE.md" target="_blank">Comprehensive Testing Guide</a></li>
-                    <li><a href="../tests/TESTING-SUMMARY.md" target="_blank">Testing Summary</a></li>
-                    <li><a href="../tests/TEST-REPORTS-GUIDE.md" target="_blank">Test Reports Guide</a></li>
-                </ul>
-            </div>
-        </div>
-    </div>
-</body>
-</html>
-INDEXEOF
-
-                            # Create comprehensive build report
-                            cat > ${ARTIFACTS_DIR}/build-summary.html << 'EOF'
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Build Summary - ${BUILD_NUMBER}</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
-        h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
-        h2 { color: #34495e; margin-top: 30px; }
-        .info-box { background: #ecf0f1; padding: 15px; border-radius: 5px; margin: 10px 0; }
-        .success { color: #27ae60; font-weight: bold; }
-        .label { font-weight: bold; color: #7f8c8d; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>🚀 Build Summary</h1>
-
-        <div class="info-box">
-            <p><span class="label">Build Number:</span> ${BUILD_NUMBER}</p>
-            <p><span class="label">Branch:</span> ${BRANCH_NAME}</p>
-            <p><span class="label">Commit:</span> ${env.GIT_COMMIT_SHORT}</p>
-            <p><span class="label">Status:</span> <span class="success">SUCCESS</span></p>
-        </div>
-
-        <h2>📦 Artifacts</h2>
-        <div class="info-box">
-            <p><span class="label">Docker Image:</span> ${IMAGE_NAME}:${IMAGE_TAG}</p>
-            <p><span class="label">Registry:</span> ${DOCKER_REGISTRY}</p>
-            <p><span class="label">JAR File:</span> Available in artifacts</p>
-        </div>
-
-        <h2>🧪 Test Results</h2>
-        <div class="info-box">
-            <p>Unit test results are available in the test reports section.</p>
-        </div>
-
-        <h2>📊 Reports</h2>
-        <ul>
-            <li>JUnit Test Reports</li>
-            <li>REST API Functional Tests</li>
-            <li>JMeter Performance Report (with latency & throughput metrics)</li>
-            <li>OWASP ZAP Security Report (vulnerability analysis)</li>
-        </ul>
-    </div>
-</body>
-</html>
-EOF
-
-                            echo "Artifacts created:"
-                            ls -lh ${ARTIFACTS_DIR}
+                            echo "=== Build Artifacts Summary ===" >> ${ARTIFACTS_DIR}/build-info.txt
+                            echo "Total artifacts: \$(find ${ARTIFACTS_DIR} -type f | wc -l)" >> ${ARTIFACTS_DIR}/build-info.txt
                         """
                     }
                 }
             }
             post {
                 always {
-                    // Archive all build artifacts (HTML reports, JSON, logs, etc.)
                     archiveArtifacts artifacts: 'build-artifacts/**/*', allowEmptyArchive: true
-
-                    // Archive test documentation
                     archiveArtifacts artifacts: 'tests/COMPREHENSIVE-TESTING-GUIDE.md', allowEmptyArchive: true
                     archiveArtifacts artifacts: 'tests/TESTING-SUMMARY.md', allowEmptyArchive: true
-                    archiveArtifacts artifacts: 'tests/TEST-REPORTS-GUIDE.md', allowEmptyArchive: true
-
-                    // Archive test configuration files
                     archiveArtifacts artifacts: 'tests/**/*.jmx', allowEmptyArchive: true
-                    archiveArtifacts artifacts: 'tests/**/*.xml', allowEmptyArchive: true
-
-                    // Publish the main test reports index page
-                    publishHTML(target: [
-                        allowMissing: true,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'build-artifacts',
-                        reportFiles: 'test-reports-index.html',
-                        reportName: 'Test Reports Dashboard'
-                    ])
                 }
             }
         }
-
-        // NOTE: Artifact registration moved to immediate execution after each build/deploy step
-        // - Docker artifact: Registered immediately after Docker push (Docker Build & Push stage)
-        // - Deployed artifact: Registered immediately after deployment verification (Wait for Deployment stage)
-        // - Security scans: Registered immediately after scan completion (Aikido, ZAP stages)
 
         stage('Publish Test Results to Unify') {
             when {
@@ -2119,84 +536,29 @@ EOF
             steps {
                 container('maven') {
                     script {
-                        echo "📊 Publishing test results to CloudBees Unify..."
+                        sh """
+                            apt-get update -qq && apt-get install -y -qq xsltproc > /dev/null 2>&1 || true
 
-                        try {
-                            // Convert JMeter results to JUnit format for Unify
-                            sh """
-                                echo "Converting JMeter results to JUnit format..."
+                            if [ -f "${ARTIFACTS_DIR}/jmeter-reports/results.jtl" ]; then
+                                TRUE_SUCCESS=\$(grep -c ',true,' ${ARTIFACTS_DIR}/jmeter-reports/results.jtl || echo 0)
+                                TRUE_FAILURE=\$(grep -c ',false,' ${ARTIFACTS_DIR}/jmeter-reports/results.jtl || echo 0)
+                                TOTAL=\$((TRUE_SUCCESS + TRUE_FAILURE))
 
-                                # Install xsltproc if not available
-                                apt-get update -qq && apt-get install -y -qq xsltproc > /dev/null 2>&1 || echo "xsltproc already installed"
-
-                                # Create XSL transformation for JMeter JTL to JUnit
-                                cat > /tmp/jtl-to-junit.xsl << 'XSLEOF'
+                                cat > ${ARTIFACTS_DIR}/jmeter-reports/jmeter-junit.xml << JUNITEOF
 <?xml version="1.0" encoding="UTF-8"?>
-<xsl:stylesheet version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
-  <xsl:output method="xml" indent="yes"/>
-  <xsl:template match="/">
-    <testsuite>
-      <xsl:attribute name="name">JMeter Performance Tests</xsl:attribute>
-      <xsl:attribute name="tests"><xsl:value-of select="count(//httpSample)"/></xsl:attribute>
-      <xsl:attribute name="failures"><xsl:value-of select="count(//httpSample[@s='false'])"/></xsl:attribute>
-      <xsl:for-each select="//httpSample">
-        <testcase>
-          <xsl:attribute name="classname">JMeter</xsl:attribute>
-          <xsl:attribute name="name"><xsl:value-of select="@lb"/></xsl:attribute>
-          <xsl:attribute name="time"><xsl:value-of select="@t div 1000"/></xsl:attribute>
-          <xsl:if test="@s='false'">
-            <failure>
-              <xsl:attribute name="message"><xsl:value-of select="@rm"/></xsl:attribute>
-            </failure>
-          </xsl:if>
-        </testcase>
-      </xsl:for-each>
-    </testsuite>
-  </xsl:template>
-</xsl:stylesheet>
-XSLEOF
-
-                                # Convert JMeter JTL to JUnit XML if JTL exists
-                                if [ -f "${ARTIFACTS_DIR}/jmeter-reports/results.jtl" ]; then
-                                    xsltproc /tmp/jtl-to-junit.xsl ${ARTIFACTS_DIR}/jmeter-reports/results.jtl > ${ARTIFACTS_DIR}/jmeter-reports/jmeter-junit.xml 2>/dev/null || echo "XSL transformation failed, creating basic JUnit XML"
-
-                                    # If XSL failed, create a basic JUnit summary
-                                    if [ ! -f "${ARTIFACTS_DIR}/jmeter-reports/jmeter-junit.xml" ]; then
-                                        TOTAL_REQUESTS=\$(wc -l < ${ARTIFACTS_DIR}/jmeter-reports/results.jtl)
-                                        FAILED_REQUESTS=\$(grep -c ',false,' ${ARTIFACTS_DIR}/jmeter-reports/results.jtl || echo 0)
-
-                                        cat > ${ARTIFACTS_DIR}/jmeter-reports/jmeter-junit.xml << JUNITEOF
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="JMeter Performance Tests" tests="\$TOTAL_REQUESTS" failures="\$FAILED_REQUESTS">
+<testsuite name="JMeter Performance Tests" tests="\$TOTAL" failures="\$TRUE_FAILURE">
   <testcase classname="JMeter" name="Performance Test Suite" time="120">
-    <system-out>Total Requests: \$TOTAL_REQUESTS, Failed: \$FAILED_REQUESTS</system-out>
+    <system-out>Total: \$TOTAL, Failed: \$TRUE_FAILURE</system-out>
   </testcase>
 </testsuite>
 JUNITEOF
-                                    fi
-                                    echo "✅ JMeter results converted to JUnit format"
-                                fi
+                            fi
+                        """
 
-                                # ZAP results are already in XML format, just ensure they're in the right location
-                                if [ -f "${ARTIFACTS_DIR}/zap-reports/baseline-report.xml" ]; then
-                                    # ZAP XML can be consumed as-is or converted to JUnit
-                                    cp ${ARTIFACTS_DIR}/zap-reports/baseline-report.xml ${ARTIFACTS_DIR}/zap-reports/zap-junit.xml
-                                    echo "✅ ZAP results prepared for Unify"
-                                fi
-                            """
-
-                            // Publish JUnit test results to CloudBees Unify
-                            junit(
-                                testResults: 'target/surefire-reports/*.xml,build-artifacts/jmeter-reports/jmeter-junit.xml,build-artifacts/zap-reports/zap-junit.xml',
-                                allowEmptyResults: true,
-                                healthScaleFactor: 1.0
-                            )
-
-                            echo "✅ Test results published to CloudBees Unify"
-
-                        } catch (Exception e) {
-                            echo "⚠️  Warning: Failed to publish test results to Unify: ${e.message}"
-                        }
+                        def publisher = new unifyPublisher()
+                        publisher.publishTestResults(
+                            testResults: 'target/surefire-reports/*.xml,build-artifacts/jmeter-reports/jmeter-junit.xml,build-artifacts/uipath-reports/uipath-junit.xml'
+                        )
                     }
                 }
             }
@@ -2206,10 +568,8 @@ JUNITEOF
     post {
         always {
             container('maven') {
-                echo "🧹 Cleanup and final archiving..."
                 sh """
-                    echo "=== Build Artifacts Summary ===" >> ${ARTIFACTS_DIR}/build-info.txt
-                    echo "Total artifacts: \$(find ${ARTIFACTS_DIR} -type f | wc -l)" >> ${ARTIFACTS_DIR}/build-info.txt
+                    echo "=== Build Complete ===" >> ${ARTIFACTS_DIR}/build-info.txt
                 """
             }
         }
@@ -2219,202 +579,35 @@ JUNITEOF
             echo "📦 Build: ${BUILD_NUMBER}"
             echo "🌿 Branch: ${env.BRANCH_NAME}"
             echo "🐳 Image: ${IMAGE_NAME}:${IMAGE_TAG}"
-            echo "📊 Artifacts: ${BUILD_URL}artifact/"
-            echo "📈 Reports: ${BUILD_URL}"
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         }
         failure {
             script {
                 echo "❌ Pipeline failed!"
 
-                // Extract actual failure information from build
-                def failedStage = 'Unknown Stage'
-                def failureReason = 'Check console output for details'
+                def failedStage = env.STAGE_NAME ?: 'Unknown'
+                def failureReason = "Check console output"
 
-                try {
-                    // Get the actual failed stage from build result
-                    def causes = currentBuild.rawBuild.getAction(jenkins.model.CauseAction)?.causes
-
-                    // Try to find failed stages from the build's execution
-                    def execution = currentBuild.rawBuild.getExecution()
-                    if (execution) {
-                        def flowNodes = execution.getCurrentHeads()
-                        flowNodes.each { node ->
-                            def error = node.getError()
-                            if (error) {
-                                def enclosingStage = node.getEnclosingBlocks()?.find {
-                                    it.class.name.contains('StageNode')
-                                }
-                                if (enclosingStage) {
-                                    failedStage = enclosingStage.getDisplayName()
-                                    failureReason = error.getMessage() ?: error.toString()
-                                }
-                            }
-                        }
-                    }
-                } catch (Exception ex1) {
-                    echo "⚠️  Could not extract detailed failure info: ${ex1.message}"
-                    failedStage = env.STAGE_NAME ?: 'Unknown Stage'
-                }
-
-                def buildResult = currentBuild.result ?: 'FAILURE'
-                def buildDuration = currentBuild.durationString ?: 'Unknown'
-
-                echo "📊 Failure Details:"
-                echo "  - Failed Stage: ${failedStage}"
-                echo "  - Reason: ${failureReason}"
-
-                // Try to write failure log if container is still available
                 try {
                     container('maven') {
                         sh """
                             echo "Build failed at: \$(date)" >> ${ARTIFACTS_DIR}/failure.log
-                            echo "Stage: ${env.STAGE_NAME}" >> ${ARTIFACTS_DIR}/failure.log || true
+                            echo "Stage: ${failedStage}" >> ${ARTIFACTS_DIR}/failure.log
                         """
                         archiveArtifacts artifacts: 'build-artifacts/failure.log', allowEmptyArchive: true
                     }
-                } catch (Exception ex2) {
-                    echo "⚠️  Container unavailable for failure log: ${ex2.message}"
+                } catch (Exception e) {
+                    echo "⚠️  Container unavailable: ${e.message}"
                 }
 
-                // Create Jira ticket using curl (works even if pods are offline)
+                // Create Jira ticket
                 try {
-                    echo "📝 Creating Jira ticket for pipeline failure..."
-
                     container('maven') {
                         withCredentials([string(credentialsId: 'jira-api-token', variable: 'JIRA_API_TOKEN')]) {
-                        // Escape special characters for JSON - preserve newlines for code block
-                        def escapedReason = failureReason.replaceAll('"', '\\\\"').replaceAll('\\\\', '\\\\\\\\')
-                        if (escapedReason.length() > 500) {
-                            escapedReason = escapedReason.substring(0, 500) + "..."
-                        }
-
-                        // Get current timestamp
-                        def timestamp = new Date().format("yyyy-MM-dd'T'HH:mm:ss'Z'", TimeZone.getTimeZone('UTC'))
-
-                        def jiraPayload = """
-{
-  "fields": {
-    "project": { "key": "CBDEMO" },
-    "summary": "Pipeline Failed: ${JOB_NAME} #${BUILD_NUMBER}",
-    "description": {
-      "type": "doc",
-      "version": 1,
-      "content": [
-        {
-          "type": "codeBlock",
-          "attrs": {"language": "text"},
-          "content": [
-            {
-              "type": "text",
-              "text": "Pipeline Build Failure Report\\n\\nBuild Information:\\n- Job: ${JOB_NAME}\\n- Build Number: ${BUILD_NUMBER}\\n- Branch: ${BRANCH_NAME}\\n- Failed Stage: ${failedStage}\\n- Build Result: ${buildResult}\\n- Duration: ${buildDuration}\\n- Build URL: ${BUILD_URL}\\n- Timestamp: ${timestamp}\\n\\nFailure Analysis:\\nThis build failed during the ${failedStage} stage.\\n\\nError: ${escapedReason}\\n\\nRecommended Actions:\\n1. Console output for specific error messages\\n2. Recent code changes\\n3. Network connectivity issues\\n4. ArgoCD synchronization status\\n5. Target cluster accessibility\\n\\nLinks:\\n- Console Output: ${BUILD_URL}console\\n- Build Artifacts: ${BUILD_URL}artifact/\\n- Test Reports: ${BUILD_URL}testReport/"
-            }
-          ]
-        },
-        {
-          "type": "heading",
-          "attrs": {"level": 3},
-          "content": [{"type": "text", "text": "Links"}]
-        },
-        {
-          "type": "bulletList",
-          "content": [
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Console Output: ", "marks": [{"type": "strong"}]}, {"type": "text", "text": "${BUILD_URL}console", "marks": [{"type": "link", "attrs": {"href": "${BUILD_URL}console"}}]}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Build Artifacts: ", "marks": [{"type": "strong"}]}, {"type": "text", "text": "${BUILD_URL}artifact/", "marks": [{"type": "link", "attrs": {"href": "${BUILD_URL}artifact/"}}]}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Test Reports: ", "marks": [{"type": "strong"}]}, {"type": "text", "text": "${BUILD_URL}testReport/", "marks": [{"type": "link", "attrs": {"href": "${BUILD_URL}testReport/"}}]}]}]}
-          ]
-        }
-      ]
-    },
-    "issuetype": { "name": "Task" },
-    "priority": { "name": "High" },
-    "labels": ["ci-cd", "pipeline-failure", "automated", "${BRANCH_NAME}"]
-  }
-}
-"""
-
-                            // Write payload to file
-                            writeFile file: 'jira-payload.json', text: jiraPayload
-
-                            // Use curl to create the ticket
-                            def curlResult = sh(
-                                script: """
-                                    curl -s -w "\\n%{http_code}" \\
-                                        -X POST \\
-                                        -H "Content-Type: application/json" \\
-                                        -u "\${JIRA_EMAIL}:\${JIRA_API_TOKEN}" \\
-                                        -d @jira-payload.json \\
-                                        "${JIRA_SITE}/rest/api/3/issue"
-                                """,
-                                returnStdout: true
-                            ).trim()
-
-                            def lines = curlResult.split('\n')
-                            def httpCode = lines[-1]
-                            def responseBody = lines[0..-2].join('\n')
-
-                            if (httpCode.startsWith('20')) {
-                                def jsonResponse = readJSON text: responseBody
-                                def issueKey = jsonResponse.key
-                                echo "✅ Jira ticket created: ${JIRA_SITE}/browse/${issueKey}"
-                            } else {
-                                echo "⚠️  Jira API returned status ${httpCode}"
-                                echo "Response: ${responseBody}"
-                            }
-                        }
-                    }
-                } catch (Exception ex3) {
-                    echo "⚠️  Failed to create Jira ticket: ${ex3.message}"
-
-                    // Final fallback: Try without container wrapper
-                    try {
-                        echo "Trying final fallback for Jira ticket creation..."
-                        withCredentials([string(credentialsId: 'jira-api-token', variable: 'JIRA_API_TOKEN'),
-                                         string(credentialsId: 'jira-email', variable: 'JIRA_EMAIL')]) {
-                            // Prepare failure details text file first
-                            def failureDetailsText = """
-Pipeline Build Failure Report
-==============================
-
-Build Information:
-- Job: ${JOB_NAME}
-- Build Number: ${BUILD_NUMBER}
-- Branch: ${BRANCH_NAME}
-- Failed Stage: ${failedStage}
-- Build Result: ${buildResult}
-- Duration: ${buildDuration}
-- Build URL: ${BUILD_URL}
-
-Failure Reason:
-${failureReason}
-
-Recommended Actions:
-1. Review console output for specific error messages
-2. Check recent code changes that may have introduced issues
-3. Verify network connectivity and timeout issues
-4. Check ArgoCD synchronization status
-5. Verify target cluster accessibility
-6. Check Kubernetes pod stability
-
-Links:
-- Console Output: ${BUILD_URL}console
-- Build Artifacts: ${BUILD_URL}artifact/
-- Test Reports: ${BUILD_URL}testReport/
-"""
-
-                            // Write to temp file for archiving attempt
-                            try {
-                                writeFile file: '/tmp/failure-details-${BUILD_NUMBER}.txt', text: failureDetailsText
-                            } catch (Exception ex4) {
-                                echo "Could not write failure details file: ${ex4.message}"
-                            }
+                            def timestamp = new Date().format("yyyy-MM-dd'T'HH:mm:ss'Z'", TimeZone.getTimeZone('UTC'))
 
                             sh """
-                                # Get timestamp
-                                TIMESTAMP=\$(date -u +%Y-%m-%dT%H:%M:%SZ)
-
-                                # Create Jira payload (using /tmp to avoid container dependency)
-                                cat > /tmp/jira-payload-${BUILD_NUMBER}.json << 'JSONEOF'
+                                cat > /tmp/jira-payload.json << 'JSONEOF'
 {
   "fields": {
     "project": { "key": "CBDEMO" },
@@ -2424,65 +617,38 @@ Links:
       "version": 1,
       "content": [
         {
-          "type": "codeBlock",
-          "attrs": {"language": "text"},
+          "type": "paragraph",
           "content": [
-            {
-              "type": "text",
-              "text": "Pipeline Build Failure Report\\n\\nBuild Information:\\n- Job: ${JOB_NAME}\\n- Build Number: ${BUILD_NUMBER}\\n- Branch: ${BRANCH_NAME}\\n- Failed Stage: ${failedStage}\\n- Build Result: ${buildResult}\\n- Duration: ${buildDuration}\\n- Build URL: ${BUILD_URL}\\n- Timestamp: TIMESTAMP_PLACEHOLDER\\n\\nFailure Analysis:\\nThis build failed during the ${failedStage} stage.\\n\\nError: ${escapedReason}\\n\\nRecommended Actions:\\n1. Console output for specific error messages\\n2. Recent code changes\\n3. Network connectivity issues\\n4. ArgoCD synchronization status\\n5. Target cluster accessibility\\n6. Kubernetes pod stability\\n\\nLinks:\\n- Console Output: ${BUILD_URL}console\\n- Build Artifacts: ${BUILD_URL}artifact/\\n- Test Reports: ${BUILD_URL}testReport/"
-            }
-          ]
-        },
-        {
-          "type": "heading",
-          "attrs": {"level": 3},
-          "content": [{"type": "text", "text": "Links"}]
-        },
-        {
-          "type": "bulletList",
-          "content": [
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Console Output: ", "marks": [{"type": "strong"}]}, {"type": "text", "text": "${BUILD_URL}console", "marks": [{"type": "link", "attrs": {"href": "${BUILD_URL}console"}}]}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Build Artifacts: ", "marks": [{"type": "strong"}]}, {"type": "text", "text": "${BUILD_URL}artifact/", "marks": [{"type": "link", "attrs": {"href": "${BUILD_URL}artifact/"}}]}]}]},
-            {"type": "listItem", "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Test Reports: ", "marks": [{"type": "strong"}]}, {"type": "text", "text": "${BUILD_URL}testReport/", "marks": [{"type": "link", "attrs": {"href": "${BUILD_URL}testReport/"}}]}]}]}
+            {"type": "text", "text": "Pipeline failed at stage: ${failedStage}"}
           ]
         }
       ]
     },
     "issuetype": { "name": "Task" },
     "priority": { "name": "High" },
-    "labels": ["ci-cd", "pipeline-failure", "automated", "${BRANCH_NAME}", "pod-failure"]
+    "labels": ["ci-cd", "pipeline-failure", "${BRANCH_NAME}"]
   }
 }
 JSONEOF
 
-                                # Replace timestamp placeholder
-                                sed -i "s|TIMESTAMP_PLACEHOLDER|\$TIMESTAMP|g" /tmp/jira-payload-${BUILD_NUMBER}.json
-
-                                echo "📝 Creating Jira ticket with curl fallback..."
                                 RESPONSE=\$(curl -X POST \\
                                   -H "Content-Type: application/json" \\
                                   -u "${JIRA_EMAIL}:\${JIRA_API_TOKEN}" \\
-                                  -d @/tmp/jira-payload-${BUILD_NUMBER}.json \\
+                                  -d @/tmp/jira-payload.json \\
                                   "${JIRA_SITE}/rest/api/3/issue" \\
                                   -w "\\nHTTP_STATUS:%{http_code}" -s)
 
                                 HTTP_CODE=\$(echo "\$RESPONSE" | grep -o 'HTTP_STATUS:[0-9]*' | cut -d: -f2)
                                 ISSUE_KEY=\$(echo "\$RESPONSE" | grep -o '"key":"[^"]*"' | head -1 | cut -d'"' -f4)
 
-                                if [ "\$HTTP_CODE" = "201" ] && [ -n "\$ISSUE_KEY" ]; then
+                                if [ "\$HTTP_CODE" = "201" ]; then
                                     echo "✅ Jira ticket created: ${JIRA_SITE}/browse/\$ISSUE_KEY"
-                                else
-                                    echo "⚠️  Jira API returned HTTP \$HTTP_CODE"
                                 fi
-
-                                # Cleanup
-                                rm -f /tmp/jira-payload-${BUILD_NUMBER}.json
                             """
                         }
-                    } catch (Exception ex5) {
-                        echo "⚠️  Curl fallback also failed: ${ex5.message}"
-                        echo "Unable to create Jira ticket automatically. Please create manually if needed."
                     }
+                } catch (Exception e) {
+                    echo "⚠️  Failed to create Jira ticket: ${e.message}"
                 }
             }
         }
