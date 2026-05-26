@@ -29,24 +29,23 @@ This implementation follows the **immediate publishing pattern** - artifacts are
 
 **When**: Immediately after Aikido scan completes (in `post { always }` block)
 
+**Format**: JSON (Aikido doesn't natively support SARIF)
+
 **Implementation**:
 ```groovy
 stage('Aikido Security Scan') {
     steps {
-        // Run Aikido scan
+        // Run Aikido scan (outputs JSON natively)
         sh 'aikido-api-client scan-release...'
-        
-        // Convert to SARIF 2.1.0
-        sh 'create-sarif...'
     }
     post {
         always {
-            // ✅ PUBLISH IMMEDIATELY
+            // ✅ PUBLISH IMMEDIATELY using JSON format
             registerSecurityScan(
-                artifacts: 'build-artifacts/aikido-scan.sarif',
-                format: 'sarif',
-                scanner: 'Aikido',
-                archive: true
+                artifacts: 'build-artifacts/aikido-scan-details.json',
+                format: 'json',        // Aikido native format
+                scanner: 'Aikido',     // REQUIRED for non-SARIF
+                archive: false
             )
         }
     }
