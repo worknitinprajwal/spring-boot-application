@@ -553,6 +553,7 @@ JUNITEOF
         always {
             container('maven') {
                 sh """
+                    mkdir -p ${ARTIFACTS_DIR}
                     echo "=== Build Complete ===" >> ${ARTIFACTS_DIR}/build-info.txt
                 """
             }
@@ -575,6 +576,7 @@ JUNITEOF
                 try {
                     container('maven') {
                         sh """
+                            mkdir -p ${ARTIFACTS_DIR}
                             echo "Build failed at: \$(date)" >> ${ARTIFACTS_DIR}/failure.log
                             echo "Stage: ${failedStage}" >> ${ARTIFACTS_DIR}/failure.log
                         """
