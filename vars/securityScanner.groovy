@@ -95,11 +95,11 @@ def convertAikidoToSARIF() {
 SARIF_EOF
 
             # Replace placeholder with actual scan ID
-            sed -i "s/\"placeholder\"/\"$SCAN_ID\"/" build-artifacts/aikido-scan.sarif
+            sed -i "s/\"placeholder\"/\"\${SCAN_ID}\"/" build-artifacts/aikido-scan.sarif
         else
             cat > build-artifacts/aikido-scan.sarif << 'SARIF_EOF'
 {
-  "\\$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "\$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
   "version": "2.1.0",
   "runs": [
     {
