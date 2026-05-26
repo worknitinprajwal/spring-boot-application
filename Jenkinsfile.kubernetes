@@ -577,7 +577,15 @@ JUNITEOF
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
             echo "📦 Build: ${BUILD_NUMBER}"
             echo "🌿 Branch: ${env.BRANCH_NAME}"
-            echo "🐳 Image: ${IMAGE_NAME}:${IMAGE_TAG}"
+
+            if (env.DOCKER_ARTIFACT_ID) {
+                echo "🐳 Image: ${IMAGE_NAME}:${IMAGE_TAG} (Built & Pushed)"
+            } else if (env.APP_CODE_CHANGED == 'true') {
+                echo "🐳 Image: ${IMAGE_NAME}:${IMAGE_TAG} (Build attempted)"
+            } else {
+                echo "📝 No app code changes - Docker build skipped"
+            }
+
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         }
         failure {
