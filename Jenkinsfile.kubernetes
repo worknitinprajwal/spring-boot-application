@@ -163,9 +163,6 @@ spec:
         }
 
         stage('Aikido Security Scan') {
-            when {
-                expression { false } // Temporarily disabled to debug pipeline
-            }
             steps {
                 container('maven') {
                     script {
@@ -173,6 +170,7 @@ spec:
                             securityScanner().runAikidoScan()
                         } catch (Exception e) {
                             echo "⚠️ Aikido scan encountered error: ${e.message}"
+                            echo "Continuing pipeline execution..."
                             currentBuild.result = 'UNSTABLE'
                         }
                     }
