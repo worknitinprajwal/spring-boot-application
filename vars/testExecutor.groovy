@@ -156,13 +156,13 @@ def runUITests() {
             mkdir -p \${ARTIFACTS_DIR}/uipath-reports
             pip3 install --quiet requests pytest pytest-html > /dev/null 2>&1
 
-            TEST_URL="\${HEALTH_CHECK_URL}"
-
-            cat > /tmp/ui_test.py << 'PYTEST_EOF'
+            # Use unquoted heredoc to allow variable expansion
+            cat > /tmp/ui_test.py << PYTEST_EOF
 import requests
 import pytest
+import os
 
-BASE_URL = "\${TEST_URL}"
+BASE_URL = "\${HEALTH_CHECK_URL}"
 
 class TestUIAutomation:
     def test_health_endpoint(self):

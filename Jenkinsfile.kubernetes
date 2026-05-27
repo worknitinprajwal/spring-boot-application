@@ -240,9 +240,24 @@ EOF
                                   --dockerfile=Dockerfile \\
                                   --destination=${IMAGE_NAME}:${IMAGE_TAG} \\
                                   --destination=${IMAGE_NAME}:${BRANCH_NAME_CLEAN}-latest \\
+                                  --digest-file=/tmp/image-digest.txt \\
                                   --cache=true \\
                                   --cache-repo=${IMAGE_NAME}/cache
+
+                                # Extract digest for CloudBees Unify
+                                if [ -f /tmp/image-digest.txt ]; then
+                                    cat /tmp/image-digest.txt
+                                fi
                             """
+
+                            // Read digest from Kaniko output
+                            try {
+                                env.IMAGE_DIGEST = readFile('/kaniko/workspace/tmp/image-digest.txt').trim()
+                                echo "✅ Image digest: ${env.IMAGE_DIGEST}"
+                            } catch (Exception e) {
+                                echo "⚠️  Could not read image digest: ${e.message}"
+                                env.IMAGE_DIGEST = null
+                            }
                         }
                     }
                 }
@@ -260,14 +275,26 @@ EOF
                         echo "   Image: ${IMAGE_NAME}:${IMAGE_TAG}"
                         echo "   Registry: docker.io"
                         echo "   URL: https://hub.docker.com/r/${IMAGE_NAME}"
+                        if (env.IMAGE_DIGEST) {
+                            echo "   Digest: ${env.IMAGE_DIGEST}"
+                        }
 
                         try {
-                            env.DOCKER_ARTIFACT_ID = registerBuildArtifactMetadata(
+                            // Build parameters map
+                            def artifactParams = [
                                 name: "docker-image",
                                 version: "${IMAGE_TAG}",
                                 url: "https://hub.docker.com/r/${IMAGE_NAME}",
-                                description: "Docker image: ${IMAGE_NAME}:${IMAGE_TAG}"
-                            )
+                                type: "Docker",
+                                label: "${env.BRANCH_NAME},build-${env.BUILD_NUMBER},commit-${env.GIT_COMMIT.take(7)}"
+                            ]
+
+                            // Add digest if available (recommended by CloudBees)
+                            if (env.IMAGE_DIGEST) {
+                                artifactParams.digest = env.IMAGE_DIGEST
+                            }
+
+                            env.DOCKER_ARTIFACT_ID = registerBuildArtifactMetadata(artifactParams)
                             echo "✅ Docker artifact registered (ID: ${env.DOCKER_ARTIFACT_ID})"
                         } catch (Exception e) {
                             echo "⚠️  Failed to register Docker artifact: ${e.message}"
