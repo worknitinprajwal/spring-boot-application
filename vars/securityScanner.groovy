@@ -37,61 +37,37 @@ def runAikidoScan() {
             SCAN_ID=\$(grep "Aikido Security scan started" ${env.ARTIFACTS_DIR}/aikido-scan-output.txt | sed -n 's/.*id: \\([0-9]*\\).*/\\1/p')
             DIFF_URL=\$(grep "Diff url:" ${env.ARTIFACTS_DIR}/aikido-scan-output.txt | sed -n 's/.*Diff url: \\(.*\\)/\\1/p')
 
-            # Fetch detailed results and SARIF export
+            # Fetch detailed results using the CI API endpoint
             if [ -n "\${SCAN_ID}" ]; then
-                # Get detailed JSON results
+                echo "📥 Fetching scan details for scan ID: \${SCAN_ID}..."
+
+                # Install jq if needed
+                apt-get update -qq > /dev/null 2>&1 && apt-get install -y -qq jq > /dev/null 2>&1 || true
+
+                # Get detailed JSON results using CI integration API
                 curl -s -H "X-AIK-API-SECRET: \${AIKIDO_CLIENT_API_KEY}" \\
                   "https://app.aikido.dev/api/integrations/continuous_integration/scan/repository?scan_id=\${SCAN_ID}" \\
                   > ${env.ARTIFACTS_DIR}/aikido-scan-details.json
 
-                # Extract repository ID from scan details
-                apt-get update -qq > /dev/null 2>&1 && apt-get install -y -qq jq > /dev/null 2>&1 || true
-                AIKIDO_REPO_ID=\$(jq -r '.repository_id // .repository.id // empty' ${env.ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo "")
+                if [ -s ${env.ARTIFACTS_DIR}/aikido-scan-details.json ]; then
+                    echo "✅ Scan details retrieved"
 
-                # Fallback to known repository ID if extraction fails
-                if [ -z "\${AIKIDO_REPO_ID}" ]; then
-                    echo "⚠️  Could not extract repo ID from scan details, using configured value"
-                    echo "   Scan details content:"
-                    head -20 ${env.ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo "   (file not found or empty)"
-                    AIKIDO_REPO_ID="2052306"
-                fi
+                    # Extract summary
+                    NEW_ISSUES=\$(jq -r '.new_issues_found // 0' ${env.ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo "0")
+                    GATE_PASSED=\$(jq -r '.gate_passed // false' ${env.ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo "false")
 
-                if [ -n "\${AIKIDO_REPO_ID}" ]; then
-                    # Export native SARIF format from Aikido using repository ID
-                    echo "📥 Downloading SARIF report from Aikido (repo ID: \${AIKIDO_REPO_ID})..."
-                    HTTP_CODE=\$(curl -s -w "%{http_code}" -o ${env.ARTIFACTS_DIR}/aikido-scan.sarif \\
-                      -H "X-AIK-API-SECRET: \${AIKIDO_CLIENT_API_KEY}" \\
-                      "https://app.aikido.dev/api/v1/issues/export/sarif?repository_id=\${AIKIDO_REPO_ID}")
+                    echo "   New issues found: \${NEW_ISSUES}"
+                    echo "   Gate passed: \${GATE_PASSED}"
+                    echo "   Diff URL: \${DIFF_URL}"
 
-                    echo "   API Response Code: \${HTTP_CODE}"
-
-                    # Check if SARIF has actual content
-                    if [ -s ${env.ARTIFACTS_DIR}/aikido-scan.sarif ]; then
-                        FILE_SIZE=\$(wc -c < ${env.ARTIFACTS_DIR}/aikido-scan.sarif)
-                        echo "✅ SARIF export successful (size: \${FILE_SIZE} bytes)"
-                        echo "   First 5 lines:"
-                        head -5 ${env.ARTIFACTS_DIR}/aikido-scan.sarif | sed 's/^/     /'
-                    else
-                        echo "⚠️  SARIF export returned empty file"
-                    fi
-
-                    # Test: Fetch issues as JSON to see what data is available
+                    # Convert to SARIF format
                     echo ""
-                    echo "🔍 Testing Aikido API - fetching issues as JSON..."
-                    curl -s -H "X-AIK-API-SECRET: \${AIKIDO_CLIENT_API_KEY}" \\
-                      "https://app.aikido.dev/api/v1/issues?repository_id=\${AIKIDO_REPO_ID}&limit=5" \\
-                      > ${env.ARTIFACTS_DIR}/aikido-issues.json
-
-                    if [ -s ${env.ARTIFACTS_DIR}/aikido-issues.json ]; then
-                        ISSUE_COUNT=\$(jq '.items | length' ${env.ARTIFACTS_DIR}/aikido-issues.json 2>/dev/null || echo "0")
-                        echo "   Found \${ISSUE_COUNT} issues in JSON API"
-                        if [ "\${ISSUE_COUNT}" -gt "0" ]; then
-                            echo "   Sample issue:"
-                            jq '.items[0] | {id, severity, title, status}' ${env.ARTIFACTS_DIR}/aikido-issues.json 2>/dev/null || echo "   (failed to parse)"
-                        fi
-                    else
-                        echo "   No issues returned from JSON API"
-                    fi
+                    echo "📄 Converting to SARIF format..."
+                    bash scripts/aikido-to-sarif.sh \\
+                      ${env.ARTIFACTS_DIR}/aikido-scan-details.json \\
+                      ${env.ARTIFACTS_DIR}/aikido-scan.sarif
+                else
+                    echo "⚠️  Could not retrieve scan details"
                 fi
             fi
 
