@@ -332,10 +332,10 @@ EOF
                         env.APP_URL = "http://${ingressHost}:${ingressPort}"
                         env.EXTERNAL_URL = env.APP_URL
 
-                        def argoApp = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev' : 'fitness-tracker-test'
+                        def argoAppName = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev' : 'fitness-tracker-test'
 
                         echo "🔍 Verifying deployment via ArgoCD..."
-                        echo "   ArgoCD App: ${argoApp}"
+                        echo "   ArgoCD App: ${argoAppName}"
                         echo "   Expected Image: ${IMAGE_NAME}:${IMAGE_TAG}"
                         echo "   Target Cluster: ${clusterIp}"
 
@@ -348,8 +348,8 @@ EOF
                                 echo "[\$ATTEMPT/\$MAX_ATTEMPTS] Checking ArgoCD deployment status..."
 
                                 # Check ArgoCD sync and health status
-                                SYNC_STATUS=\$(argocd app get ${argoApp} -o json 2>/dev/null | jq -r '.status.sync.status' 2>/dev/null || echo "Unknown")
-                                HEALTH_STATUS=\$(argocd app get ${argoApp} -o json 2>/dev/null | jq -r '.status.health.status' 2>/dev/null || echo "Unknown")
+                                SYNC_STATUS=\$(argocd app get ${argoAppName} -o json 2>/dev/null | jq -r '.status.sync.status' 2>/dev/null || echo "Unknown")
+                                HEALTH_STATUS=\$(argocd app get ${argoAppName} -o json 2>/dev/null | jq -r '.status.health.status' 2>/dev/null || echo "Unknown")
 
                                 echo "   Sync: \$SYNC_STATUS | Health: \$HEALTH_STATUS"
 
