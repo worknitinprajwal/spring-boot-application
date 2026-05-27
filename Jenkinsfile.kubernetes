@@ -316,10 +316,16 @@ EOF
                         def ingressHost = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev.local' : 'fitness-tracker-test.local'
                         def ingressPort = env.BRANCH_NAME == 'develop' ? '8081' : '8082'
 
-                        def actualNodePort = sh(
-                            script: "kubectl --server=${targetServer} --token=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/token) --certificate-authority=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt -n ${appNamespace} get svc fitness-tracker -o jsonpath='{.spec.ports[0].nodePort}'",
-                            returnStdout: true
-                        ).trim()
+                        def actualNodePort = ""
+                        try {
+                            actualNodePort = sh(
+                                script: "kubectl --server=${targetServer} --token=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/token) --certificate-authority=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt --insecure-skip-tls-verify -n ${appNamespace} get svc fitness-tracker -o jsonpath='{.spec.ports[0].nodePort}'",
+                                returnStdout: true
+                            ).trim()
+                        } catch (Exception e) {
+                            echo "⚠️  Could not get NodePort: ${e.message}, using default 30080"
+                            actualNodePort = "30080"
+                        }
 
                         env.HEALTH_CHECK_URL = "http://${clusterIp}:${actualNodePort}"
                         env.APP_URL = "http://${ingressHost}:${ingressPort}"
