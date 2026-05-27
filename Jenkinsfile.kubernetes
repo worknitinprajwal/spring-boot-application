@@ -259,15 +259,20 @@ EOF
                         echo "📦 Publishing Docker image to CloudBees Unify..."
                         echo "   Image: ${IMAGE_NAME}:${IMAGE_TAG}"
                         echo "   Registry: docker.io"
-                        echo "   URL: https://hub.docker.com/r/${IMAGE_NAME}/tags"
+                        echo "   URL: https://hub.docker.com/r/${IMAGE_NAME}"
 
-                        env.DOCKER_ARTIFACT_ID = unifyPublisher().publishBuildArtifact(
-                            name: "fitness-tracker-docker",
-                            version: "${IMAGE_TAG}",
-                            url: "docker.io/${IMAGE_NAME}:${IMAGE_TAG}",
-                            type: "Docker",
-                            label: env.BRANCH_NAME == 'develop' ? 'development,latest,docker' : 'test,stable,docker'
-                        )
+                        try {
+                            env.DOCKER_ARTIFACT_ID = registerBuildArtifactMetadata(
+                                name: "docker-image",
+                                version: "${IMAGE_TAG}",
+                                url: "https://hub.docker.com/r/${IMAGE_NAME}",
+                                description: "Docker image: ${IMAGE_NAME}:${IMAGE_TAG}"
+                            )
+                            echo "✅ Docker artifact registered (ID: ${env.DOCKER_ARTIFACT_ID})"
+                        } catch (Exception e) {
+                            echo "⚠️  Failed to register Docker artifact: ${e.message}"
+                            env.DOCKER_ARTIFACT_ID = null
+                        }
                     }
                 }
             }
@@ -361,7 +366,7 @@ EOF
                             echo "   kubectl get pods -n ${appNamespace}"
                         """
 
-                        if (env.DOCKER_ARTIFACT_ID) {
+                        if (env.DOCKER_ARTIFACT_ID && env.DOCKER_ARTIFACT_ID != 'null' && env.DOCKER_ARTIFACT_ID != 'unknown') {
                             def targetEnv = env.BRANCH_NAME == 'develop' ? 'Development' : 'Test'
                             def argoApp = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev' : 'fitness-tracker-test'
                             def clusterName = env.BRANCH_NAME == 'develop' ? 'kind-dev' : 'kind-test'
@@ -371,12 +376,16 @@ EOF
                             echo "   ArgoCD App: ${argoApp}"
                             echo "   Cluster: ${clusterName}"
                             echo "   Image: ${IMAGE_NAME}:${IMAGE_TAG}"
+                            echo "   Artifact ID: ${env.DOCKER_ARTIFACT_ID}"
 
                             unifyPublisher().publishDeployment(
                                 artifactId: env.DOCKER_ARTIFACT_ID,
                                 targetEnvironment: targetEnv,
                                 labels: "argocd,gitops,${clusterName},${argoApp}"
                             )
+                        } else {
+                            echo "ℹ️  Skipping deployment registration - no valid artifact ID"
+                            echo "   (Artifact ID: ${env.DOCKER_ARTIFACT_ID})"
                         }
                     }
                 }
