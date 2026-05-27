@@ -48,23 +48,32 @@ def runAikidoScan() {
                 apt-get update -qq > /dev/null 2>&1 && apt-get install -y -qq jq > /dev/null 2>&1 || true
                 AIKIDO_REPO_ID=\$(jq -r '.repository_id // .repository.id // empty' ${env.ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo "")
 
+                # Fallback to known repository ID if extraction fails
+                if [ -z "\${AIKIDO_REPO_ID}" ]; then
+                    echo "⚠️  Could not extract repo ID from scan details, using configured value"
+                    echo "   Scan details content:"
+                    head -20 ${env.ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo "   (file not found or empty)"
+                    AIKIDO_REPO_ID="2052306"
+                fi
+
                 if [ -n "\${AIKIDO_REPO_ID}" ]; then
                     # Export native SARIF format from Aikido using repository ID
                     echo "📥 Downloading SARIF report from Aikido (repo ID: \${AIKIDO_REPO_ID})..."
-                    curl -s -H "X-AIK-API-SECRET: \${AIKIDO_CLIENT_API_KEY}" \\
-                      "https://app.aikido.dev/api/v1/issues/export/sarif?repository_id=\${AIKIDO_REPO_ID}" \\
-                      > ${env.ARTIFACTS_DIR}/aikido-scan.sarif
+                    HTTP_CODE=\$(curl -s -w "%{http_code}" -o ${env.ARTIFACTS_DIR}/aikido-scan.sarif \\
+                      -H "X-AIK-API-SECRET: \${AIKIDO_CLIENT_API_KEY}" \\
+                      "https://app.aikido.dev/api/v1/issues/export/sarif?repository_id=\${AIKIDO_REPO_ID}")
+
+                    echo "   API Response Code: \${HTTP_CODE}"
 
                     # Check if SARIF has actual content
                     if [ -s ${env.ARTIFACTS_DIR}/aikido-scan.sarif ]; then
-                        echo "✅ SARIF export successful"
+                        FILE_SIZE=\$(wc -c < ${env.ARTIFACTS_DIR}/aikido-scan.sarif)
+                        echo "✅ SARIF export successful (size: \${FILE_SIZE} bytes)"
+                        echo "   First 5 lines:"
+                        head -5 ${env.ARTIFACTS_DIR}/aikido-scan.sarif | sed 's/^/     /'
                     else
                         echo "⚠️  SARIF export returned empty file"
                     fi
-                else
-                    echo "⚠️  Could not extract Aikido repository ID from scan details"
-                    echo "   Scan details content:"
-                    cat ${env.ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo "   (file not found)"
                 fi
             fi
 
