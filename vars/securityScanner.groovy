@@ -44,11 +44,28 @@ def runAikidoScan() {
                   "https://app.aikido.dev/api/integrations/continuous_integration/scan/repository?scan_id=\${SCAN_ID}" \\
                   > ${env.ARTIFACTS_DIR}/aikido-scan-details.json
 
-                # Export native SARIF format from Aikido
-                echo "📥 Downloading SARIF report from Aikido..."
-                curl -s -H "X-AIK-API-SECRET: \${AIKIDO_CLIENT_API_KEY}" \\
-                  "https://app.aikido.dev/api/v1/issues/export/sarif?repository_id=\${REPO_NAME}" \\
-                  > ${env.ARTIFACTS_DIR}/aikido-scan.sarif || echo "⚠️  SARIF export failed"
+                # Extract repository ID from scan details
+                apt-get update -qq > /dev/null 2>&1 && apt-get install -y -qq jq > /dev/null 2>&1 || true
+                AIKIDO_REPO_ID=\$(jq -r '.repository_id // .repository.id // empty' ${env.ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo "")
+
+                if [ -n "\${AIKIDO_REPO_ID}" ]; then
+                    # Export native SARIF format from Aikido using repository ID
+                    echo "📥 Downloading SARIF report from Aikido (repo ID: \${AIKIDO_REPO_ID})..."
+                    curl -s -H "X-AIK-API-SECRET: \${AIKIDO_CLIENT_API_KEY}" \\
+                      "https://app.aikido.dev/api/v1/issues/export/sarif?repository_id=\${AIKIDO_REPO_ID}" \\
+                      > ${env.ARTIFACTS_DIR}/aikido-scan.sarif
+
+                    # Check if SARIF has actual content
+                    if [ -s ${env.ARTIFACTS_DIR}/aikido-scan.sarif ]; then
+                        echo "✅ SARIF export successful"
+                    else
+                        echo "⚠️  SARIF export returned empty file"
+                    fi
+                else
+                    echo "⚠️  Could not extract Aikido repository ID from scan details"
+                    echo "   Scan details content:"
+                    cat ${env.ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo "   (file not found)"
+                fi
             fi
 
             # Generate summary
