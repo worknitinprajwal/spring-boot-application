@@ -408,6 +408,35 @@ EOF
                                 TARGET_CONTEXT="kind-kind-test"
                             fi
 
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            echo "🔍 Debugging kubectl configuration..."
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+                            echo "1. Checking mount point:"
+                            ls -la /root/.kube/ 2>&1 || echo "   ⚠️  Directory not found"
+                            echo ""
+
+                            echo "2. Contents of kubeconfig:"
+                            if [ -f /root/.kube/config ]; then
+                                echo "   ✅ Config file exists"
+                                echo "   File size: \$(wc -c < /root/.kube/config) bytes"
+                            else
+                                echo "   ❌ Config file NOT found"
+                            fi
+                            echo ""
+
+                            echo "3. Kubectl config view:"
+                            kubectl config view 2>&1 || echo "   ⚠️  Cannot view config"
+                            echo ""
+
+                            echo "4. Available contexts:"
+                            kubectl config get-contexts 2>&1 || echo "   ⚠️  Cannot list contexts"
+                            echo ""
+
+                            echo "5. Attempting to use context \${TARGET_CONTEXT}:"
+                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            echo ""
+
                             echo "🔄 Switching to context: \${TARGET_CONTEXT}"
                             kubectl config use-context \${TARGET_CONTEXT}
 
