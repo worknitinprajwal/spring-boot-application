@@ -319,7 +319,7 @@ EOF
                         def actualNodePort = ""
                         try {
                             actualNodePort = sh(
-                                script: "kubectl --server=${targetServer} --token=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/token) --certificate-authority=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt --insecure-skip-tls-verify -n ${appNamespace} get svc fitness-tracker -o jsonpath='{.spec.ports[0].nodePort}'",
+                                script: "kubectl --server=${targetServer} --token=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/token) --insecure-skip-tls-verify -n ${appNamespace} get svc fitness-tracker -o jsonpath='{.spec.ports[0].nodePort}'",
                                 returnStdout: true
                             ).trim()
                         } catch (Exception e) {
@@ -336,7 +336,6 @@ EOF
                             TARGET_NAMESPACE="${appNamespace}"
                             EXPECTED_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
                             SA_TOKEN=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
-                            CA_CERT=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 
                             MAX_ATTEMPTS=30
                             ATTEMPT=0
@@ -345,7 +344,7 @@ EOF
                                 ATTEMPT=\$((ATTEMPT + 1))
                                 echo "[\$ATTEMPT/\$MAX_ATTEMPTS] Checking deployment..."
 
-                                RUNNING_IMAGE=\$(kubectl --server=\$TARGET_SERVER --token=\$SA_TOKEN --certificate-authority=\$CA_CERT -n \$TARGET_NAMESPACE get pods -l app=fitness-tracker -o jsonpath='{.items[0].spec.containers[0].image}' 2>/dev/null || echo "")
+                                RUNNING_IMAGE=\$(kubectl --server=\$TARGET_SERVER --token=\$SA_TOKEN --insecure-skip-tls-verify -n \$TARGET_NAMESPACE get pods -l app=fitness-tracker -o jsonpath='{.items[0].spec.containers[0].image}' 2>/dev/null || echo "")
 
                                 if [ "\$RUNNING_IMAGE" = "\$EXPECTED_IMAGE" ]; then
                                     if curl -s -f ${env.HEALTH_CHECK_URL}/actuator/health > /dev/null 2>&1; then
