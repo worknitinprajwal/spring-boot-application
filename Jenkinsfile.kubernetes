@@ -402,14 +402,28 @@ EOF
 
                         // Create kubeconfig from environment variable
                         sh """
+                            set -e
                             echo "📝 Creating kubeconfig from environment variable..."
+
+                            if [ -z "\${KUBECONFIG_CONTENT}" ]; then
+                                echo "❌ ERROR: KUBECONFIG_CONTENT environment variable is not set!"
+                                exit 1
+                            fi
+
+                            echo "   Env var is set, length: \${#KUBECONFIG_CONTENT} chars"
+
                             mkdir -p /root/.kube
-                            echo "\${KUBECONFIG_CONTENT}" > /root/.kube/config
+                            printf "%s" "\${KUBECONFIG_CONTENT}" > /root/.kube/config
                             chmod 600 /root/.kube/config
 
-                            echo "✅ Kubeconfig created"
+                            if [ ! -f /root/.kube/config ]; then
+                                echo "❌ ERROR: Failed to create config file!"
+                                exit 1
+                            fi
+
+                            echo "✅ Kubeconfig created successfully"
                             echo "   File size: \$(wc -c < /root/.kube/config) bytes"
-                            echo "   Contexts available:"
+                            echo "   Available contexts:"
                             kubectl config get-contexts --no-headers | awk '{print "     - " \$2}'
                         """
 
