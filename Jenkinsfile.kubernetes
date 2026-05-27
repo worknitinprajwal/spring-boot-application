@@ -470,7 +470,7 @@ EOF
                             kubectl get pods -n ${appNamespace} -l app=fitness-tracker -o wide
                             echo ""
                             echo "Pod images:"
-                            kubectl get pods -n ${appNamespace} -l app=fitness-tracker -o json | jq -r '.items[] | "  \(.metadata.name): \(.spec.containers[0].image)"'
+                            kubectl get pods -n ${appNamespace} -l app=fitness-tracker -o json | jq -r '.items[] | "  \\(.metadata.name): \\(.spec.containers[0].image)"'
 
                             kubectl config use-context kind-igs
                             exit 1
