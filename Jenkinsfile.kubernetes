@@ -33,6 +33,9 @@ spec:
     volumeMounts:
     - name: maven-cache
       mountPath: /root/.m2
+    - name: kubeconfig
+      mountPath: /root/.kube
+      readOnly: true
   - name: kaniko
     image: gcr.io/kaniko-project/executor:debug
     command: ['sleep']
@@ -85,6 +88,9 @@ spec:
     emptyDir: {}
   - name: docker-config
     emptyDir: {}
+  - name: kubeconfig
+    secret:
+      secretName: cross-cluster-kubeconfig
   - name: zap-workdir
     emptyDir: {}
 """
@@ -372,20 +378,19 @@ EOF
 
                         def argoAppName = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev' : 'fitness-tracker-test'
 
-                        echo "🔍 Verifying deployment via health endpoint and build info..."
+                        echo "🔍 Verifying deployment - checking actual pod images..."
                         echo "   ArgoCD App: ${argoAppName}"
                         echo "   Expected Image: ${IMAGE_NAME}:${IMAGE_TAG}"
                         echo "   Target Cluster: ${clusterIp}"
                         echo "   Namespace: ${appNamespace}"
-                        echo "   Health URL: ${env.HEALTH_CHECK_URL}"
                         echo ""
 
-                        // Install ArgoCD CLI for optional sync status check
+                        // Install kubectl and jq
                         sh """
-                            if ! command -v argocd > /dev/null 2>&1; then
-                                echo "📦 Installing ArgoCD CLI..."
-                                curl -sSL -o /usr/local/bin/argocd https://github.com/argoproj/argo-cd/releases/latest/download/argocd-linux-amd64
-                                chmod +x /usr/local/bin/argocd
+                            if ! command -v kubectl > /dev/null 2>&1; then
+                                echo "📦 Installing kubectl..."
+                                curl -sLO "https://dl.k8s.io/release/\$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+                                chmod +x kubectl && mv kubectl /usr/local/bin/
                             fi
 
                             if ! command -v jq > /dev/null 2>&1; then
@@ -395,74 +400,80 @@ EOF
                             fi
                         """
 
-                        // Wait for ArgoCD to sync and verify the new image is deployed
+                        // Verify pods are running the NEW image
                         sh """
+                            EXPECTED_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
+                            TARGET_CONTEXT="kind-kind-dev"
+                            if [ "${appNamespace}" = "test" ]; then
+                                TARGET_CONTEXT="kind-kind-test"
+                            fi
+
+                            echo "🔄 Switching to context: \${TARGET_CONTEXT}"
+                            kubectl config use-context \${TARGET_CONTEXT}
+
                             MAX_ATTEMPTS=60
                             ATTEMPT=0
-                            VERIFIED=false
-                            ARGOCD_SERVER="172.18.0.3:30080"
-                            EXPECTED_TAG="${IMAGE_TAG}"
+                            EXPECTED_REPLICAS=4
 
-                            echo "⏳ Waiting for ArgoCD sync and new image deployment..."
-                            echo "   Expected tag: \${EXPECTED_TAG}"
+                            echo "⏳ Waiting for ALL pods to update to NEW image: \${EXPECTED_IMAGE}"
+                            echo "   (This ensures we're testing the image we just built, not an old one)"
                             echo ""
 
-                            # Give ArgoCD time to detect the Helm chart update
-                            echo "⏸️  Initial wait for ArgoCD to detect change (30s)..."
+                            # Give ArgoCD time to detect and start sync
+                            echo "⏸️  Initial wait for ArgoCD sync (30s)..."
                             sleep 30
-
-                            # Try to check ArgoCD sync status (best effort)
-                            echo "🔍 Checking ArgoCD sync status..."
-                            argocd app get ${argoAppName} --server \${ARGOCD_SERVER} --insecure --grpc-web 2>/dev/null || echo "⚠️  ArgoCD CLI unavailable"
-                            echo ""
 
                             while [ \$ATTEMPT -lt \$MAX_ATTEMPTS ]; do
                                 ATTEMPT=\$((ATTEMPT + 1))
 
-                                # Check if health endpoint is responding
-                                HTTP_CODE=\$(curl -s -o /dev/null -w "%{http_code}" ${env.HEALTH_CHECK_URL}/actuator/health 2>/dev/null || echo "000")
+                                # Get ALL pod images
+                                CURRENT_IMAGES=\$(kubectl get pods -n ${appNamespace} -l app=fitness-tracker -o json 2>/dev/null | \
+                                    jq -r '.items[].spec.containers[0].image' 2>/dev/null | sort -u)
 
-                                if [ "\${HTTP_CODE}" = "200" ]; then
-                                    # Get build info to verify image tag
-                                    BUILD_INFO=\$(curl -s ${env.HEALTH_CHECK_URL}/actuator/info 2>/dev/null || echo "{}")
+                                # Count pods with CORRECT image that are READY
+                                READY_WITH_NEW_IMAGE=\$(kubectl get pods -n ${appNamespace} -l app=fitness-tracker -o json 2>/dev/null | \
+                                    jq -r ".items[] | select(.spec.containers[0].image == \\"\${EXPECTED_IMAGE}\\") | select(.status.conditions[]? | select(.type == \\"Ready\\" and .status == \\"True\\")) | .metadata.name" 2>/dev/null | wc -l)
 
-                                    # Check if the build info contains our expected tag (build number)
-                                    if echo "\${BUILD_INFO}" | grep -q "\${EXPECTED_TAG}" || echo "\${BUILD_INFO}" | grep -q "${BUILD_NUMBER}"; then
-                                        echo "✅ Application is healthy and running expected image!"
-                                        echo "   Build info: \${BUILD_INFO}"
-                                        VERIFIED=true
-                                        break
-                                    else
-                                        echo "[\$ATTEMPT/\$MAX_ATTEMPTS] App responding but may be old version (HTTP \${HTTP_CODE})"
-                                        echo "   Build info: \${BUILD_INFO}"
+                                TOTAL_PODS=\$(kubectl get pods -n ${appNamespace} -l app=fitness-tracker --no-headers 2>/dev/null | wc -l || echo 0)
+
+                                echo "[\$ATTEMPT/\$MAX_ATTEMPTS] Ready with NEW image: \${READY_WITH_NEW_IMAGE}/\${EXPECTED_REPLICAS} (Total pods: \${TOTAL_PODS})"
+                                echo "   Current images in use:"
+                                echo "\${CURRENT_IMAGES}" | sed 's/^/     /'
+
+                                if [ "\${READY_WITH_NEW_IMAGE}" -ge "\${EXPECTED_REPLICAS}" ]; then
+                                    echo ""
+                                    echo "✅ All \${EXPECTED_REPLICAS} pods are READY with NEW image: \${EXPECTED_IMAGE}"
+
+                                    # Verify health endpoint
+                                    kubectl config use-context kind-igs
+                                    if curl -s -f ${env.HEALTH_CHECK_URL}/actuator/health > /dev/null 2>&1; then
+                                        echo "✅ Health endpoint responding"
                                     fi
-                                else
-                                    echo "[\$ATTEMPT/\$MAX_ATTEMPTS] Waiting for healthy response... (HTTP \${HTTP_CODE})"
+
+                                    echo ""
+                                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                                    echo "✅ Deployment VERIFIED!"
+                                    echo "   ✓ ArgoCD synced Helm chart"
+                                    echo "   ✓ All 4 pods running NEW image ${IMAGE_TAG}"
+                                    echo "   ✓ Pods are healthy and ready"
+                                    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                                    exit 0
                                 fi
 
                                 sleep 5
                             done
 
-                            if [ "\${VERIFIED}" = "true" ]; then
-                                echo ""
-                                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                                echo "✅ Deployment verified successfully!"
-                                echo "   - ArgoCD has synced the new Helm chart"
-                                echo "   - Pods are running image: ${IMAGE_TAG}"
-                                echo "   - Application is healthy and responding"
-                                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                                exit 0
-                            else
-                                echo ""
-                                echo "❌ Timeout: Could not verify new image deployment after \$((MAX_ATTEMPTS * 5 + 30)) seconds"
-                                echo "   This may indicate:"
-                                echo "   - ArgoCD hasn't synced the Helm chart yet"
-                                echo "   - Pods are failing to start with new image"
-                                echo "   - Application health endpoint not responding"
-                                echo ""
-                                echo "   Check: ArgoCD UI, pod logs in ${appNamespace} namespace"
-                                exit 1
-                            fi
+                            echo ""
+                            echo "❌ TIMEOUT: Only \${READY_WITH_NEW_IMAGE}/\${EXPECTED_REPLICAS} pods running NEW image after 5 minutes"
+                            echo ""
+                            echo "Current pod status:"
+                            kubectl get pods -n ${appNamespace} -l app=fitness-tracker -o wide
+                            echo ""
+                            echo "Pod images:"
+                            kubectl get pods -n ${appNamespace} -l app=fitness-tracker -o json | jq -r '.items[] | "  \(.metadata.name): \(.spec.containers[0].image)"'
+
+                            kubectl config use-context kind-igs
+                            exit 1
                         """
 
                         if (env.DOCKER_ARTIFACT_ID && env.DOCKER_ARTIFACT_ID != 'null' && env.DOCKER_ARTIFACT_ID != 'unknown') {
