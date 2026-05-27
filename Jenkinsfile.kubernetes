@@ -117,6 +117,10 @@ spec:
         JIRA_SITE = 'https://cloudbees.atlassian.net'
         JIRA_PROJECT_KEY = 'CBDEMO'
         JIRA_EMAIL = 'analla@cloudbees.com'
+
+        // CloudBees Unify Configuration (for direct API fallback)
+        UNIFY_ORG_ID = '39a699bc-7ec9-4a84-84ac-83dfe569bc4d'
+        UNIFY_COMPONENT_ID = '58688932-6df0-4ac5-a2ae-8b3dec69fb8f'
     }
 
     stages {

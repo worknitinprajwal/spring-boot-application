@@ -52,7 +52,7 @@ def publishBuildArtifact(Map config = [:]) {
     }
 
     try {
-        echo "📦 Publishing ${name} artifact to CloudBees Unify..."
+        echo "📦 Publishing ${name} artifact to CloudBees Unify via plugin..."
         def artifactId = registerBuildArtifactMetadata(
             name: name,
             version: version,
@@ -63,8 +63,24 @@ def publishBuildArtifact(Map config = [:]) {
         echo "✅ Artifact published to CloudBees Unify (ID: ${artifactId})"
         return artifactId
     } catch (Exception e) {
-        echo "⚠️  Failed to publish artifact to Unify: ${e.message}"
-        return null
+        if (e.message?.contains('unable to retrieve run details')) {
+            echo "⚠️  Plugin failed (404 - workflow mapping issue)"
+            echo "🔄 Attempting direct API call as fallback..."
+            try {
+                return unifyApiClient().registerBuildArtifact(
+                    name: name,
+                    version: version,
+                    url: url,
+                    type: type
+                )
+            } catch (Exception apiError) {
+                echo "⚠️  Direct API also failed: ${apiError.message}"
+                return null
+            }
+        } else {
+            echo "⚠️  Failed to publish artifact to Unify: ${e.message}"
+            return null
+        }
     }
 }
 
@@ -79,7 +95,7 @@ def publishDeployment(Map config = [:]) {
     }
 
     try {
-        echo "🚀 Publishing deployment to ${targetEnv} environment in CloudBees Unify..."
+        echo "🚀 Publishing deployment to ${targetEnv} environment via plugin..."
         registerDeployedArtifactMetadata(
             artifactId: artifactId,
             targetEnvironment: targetEnv,
@@ -87,7 +103,21 @@ def publishDeployment(Map config = [:]) {
         )
         echo "✅ Deployment published to CloudBees Unify (Environment: ${targetEnv})"
     } catch (Exception e) {
-        echo "⚠️  Failed to publish deployment to Unify: ${e.message}"
+        if (e.message?.contains('unable to retrieve run details')) {
+            echo "⚠️  Plugin failed (404 - workflow mapping issue)"
+            echo "🔄 Attempting direct API call as fallback..."
+            try {
+                unifyApiClient().registerDeployment(
+                    artifactId: artifactId,
+                    targetEnvironment: targetEnv,
+                    labels: labels
+                )
+            } catch (Exception apiError) {
+                echo "⚠️  Direct API also failed: ${apiError.message}"
+            }
+        } else {
+            echo "⚠️  Failed to publish deployment to Unify: ${e.message}"
+        }
     }
 }
 
