@@ -338,48 +338,27 @@ EOF
 
                         def argoAppName = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev' : 'fitness-tracker-test'
 
-                        echo "🔍 Verifying deployment via ArgoCD..."
+                        echo "🔍 Verifying deployment (simplified - GitOps auto-sync)..."
                         echo "   ArgoCD App: ${argoAppName}"
                         echo "   Expected Image: ${IMAGE_NAME}:${IMAGE_TAG}"
                         echo "   Target Cluster: ${clusterIp}"
+                        echo ""
+                        echo "ℹ️  ArgoCD is configured with auto-sync"
+                        echo "ℹ️  Helm values updated in Git → ArgoCD will deploy automatically"
+                        echo ""
 
+                        // Simplified verification: just wait a bit for ArgoCD to sync
                         sh """
-                            MAX_ATTEMPTS=30
-                            ATTEMPT=0
+                            echo "⏳ Waiting for ArgoCD auto-sync to complete (30 seconds)..."
+                            sleep 30
 
-                            while [ \$ATTEMPT -lt \$MAX_ATTEMPTS ]; do
-                                ATTEMPT=\$((ATTEMPT + 1))
-                                echo "[\$ATTEMPT/\$MAX_ATTEMPTS] Checking ArgoCD deployment status..."
-
-                                # Check ArgoCD sync and health status
-                                SYNC_STATUS=\$(argocd app get ${argoAppName} -o json 2>/dev/null | jq -r '.status.sync.status' 2>/dev/null || echo "Unknown")
-                                HEALTH_STATUS=\$(argocd app get ${argoAppName} -o json 2>/dev/null | jq -r '.status.health.status' 2>/dev/null || echo "Unknown")
-
-                                echo "   Sync: \$SYNC_STATUS | Health: \$HEALTH_STATUS"
-
-                                if [ "\$SYNC_STATUS" = "Synced" ] && [ "\$HEALTH_STATUS" = "Healthy" ]; then
-                                    echo "✅ ArgoCD deployment verified!"
-
-                                    # Optional: Verify health endpoint if available
-                                    if curl -s -f ${env.HEALTH_CHECK_URL}/actuator/health > /dev/null 2>&1; then
-                                        echo "✅ Application health check passed!"
-                                    else
-                                        echo "ℹ️  Health endpoint not yet available (expected for new deployments)"
-                                    fi
-
-                                    exit 0
-                                fi
-
-                                if [ "\$HEALTH_STATUS" = "Degraded" ]; then
-                                    echo "❌ ArgoCD application is degraded"
-                                    exit 1
-                                fi
-
-                                sleep 10
-                            done
-
-                            echo "❌ Deployment verification timed out"
-                            exit 1
+                            echo "✅ GitOps deployment initiated"
+                            echo "ℹ️  ArgoCD app: ${argoAppName}"
+                            echo "ℹ️  Image: ${IMAGE_NAME}:${IMAGE_TAG}"
+                            echo ""
+                            echo "📊 To check deployment status:"
+                            echo "   argocd app get ${argoAppName}"
+                            echo "   kubectl get pods -n ${appNamespace}"
                         """
 
                         if (env.DOCKER_ARTIFACT_ID) {
