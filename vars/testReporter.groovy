@@ -65,14 +65,18 @@ def archiveJMeterReports() {
 def archiveZAPReports() {
     archiveArtifacts artifacts: 'build-artifacts/zap-reports/**/*', allowEmptyArchive: true
 
-    publishHTML(target: [
-        allowMissing: true,
-        alwaysLinkToLastBuild: true,
-        keepAll: true,
-        reportDir: 'build-artifacts/zap-reports',
-        reportFiles: 'baseline-report.html',
-        reportName: 'OWASP ZAP Security Report'
-    ])
+    try {
+        publishHTML(target: [
+            allowMissing: true,
+            alwaysLinkToLastBuild: true,
+            keepAll: true,
+            reportDir: 'build-artifacts/zap-reports',
+            reportFiles: 'baseline-report.html',
+            reportName: 'OWASP ZAP Security Report'
+        ])
+    } catch (Exception e) {
+        echo "⚠️  ZAP HTML report publishing failed: ${e.message}"
+    }
 }
 
 def archiveUITests() {
