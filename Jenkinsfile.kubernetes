@@ -240,20 +240,28 @@ EOF
                                   --dockerfile=Dockerfile \\
                                   --destination=${IMAGE_NAME}:${IMAGE_TAG} \\
                                   --destination=${IMAGE_NAME}:${BRANCH_NAME_CLEAN}-latest \\
-                                  --digest-file=/tmp/image-digest.txt \\
+                                  --digest-file=\$(pwd)/image-digest.txt \\
                                   --cache=true \\
                                   --cache-repo=${IMAGE_NAME}/cache
 
-                                # Extract digest for CloudBees Unify
-                                if [ -f /tmp/image-digest.txt ]; then
-                                    cat /tmp/image-digest.txt
+                                # Copy digest to artifacts directory for easy access
+                                if [ -f \$(pwd)/image-digest.txt ]; then
+                                    cp \$(pwd)/image-digest.txt ${ARTIFACTS_DIR}/image-digest.txt
+                                    echo "✅ Digest file saved: ${ARTIFACTS_DIR}/image-digest.txt"
+                                    cat \$(pwd)/image-digest.txt
                                 fi
                             """
 
-                            // Read digest from Kaniko output
+                            // Read digest from artifacts directory
                             try {
-                                env.IMAGE_DIGEST = readFile('/kaniko/workspace/tmp/image-digest.txt').trim()
-                                echo "✅ Image digest: ${env.IMAGE_DIGEST}"
+                                def digestFile = "${ARTIFACTS_DIR}/image-digest.txt"
+                                if (fileExists(digestFile)) {
+                                    env.IMAGE_DIGEST = readFile(digestFile).trim()
+                                    echo "✅ Image digest: ${env.IMAGE_DIGEST}"
+                                } else {
+                                    echo "⚠️  Digest file not found at ${digestFile}"
+                                    env.IMAGE_DIGEST = null
+                                }
                             } catch (Exception e) {
                                 echo "⚠️  Could not read image digest: ${e.message}"
                                 env.IMAGE_DIGEST = null
