@@ -425,15 +425,23 @@ EOF
                             fi
                             echo ""
 
-                            echo "3. Kubectl config view:"
+                            echo "3. Raw config file contexts (grep):"
+                            grep -E "^  name:|^- name:" /root/.kube/config | head -15
+                            echo ""
+
+                            echo "4. Raw config file servers:"
+                            grep "server:" /root/.kube/config
+                            echo ""
+
+                            echo "5. Kubectl config view:"
                             kubectl config view 2>&1 || echo "   ⚠️  Cannot view config"
                             echo ""
 
-                            echo "4. Available contexts:"
+                            echo "6. Available contexts:"
                             kubectl config get-contexts 2>&1 || echo "   ⚠️  Cannot list contexts"
                             echo ""
 
-                            echo "5. Attempting to use context \${TARGET_CONTEXT}:"
+                            echo "7. Attempting to use context \${TARGET_CONTEXT}:"
                             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                             echo ""
 
