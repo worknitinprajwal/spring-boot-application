@@ -37,11 +37,18 @@ def runAikidoScan() {
             SCAN_ID=\$(grep "Aikido Security scan started" ${env.ARTIFACTS_DIR}/aikido-scan-output.txt | sed -n 's/.*id: \\([0-9]*\\).*/\\1/p')
             DIFF_URL=\$(grep "Diff url:" ${env.ARTIFACTS_DIR}/aikido-scan-output.txt | sed -n 's/.*Diff url: \\(.*\\)/\\1/p')
 
-            # Fetch detailed results
+            # Fetch detailed results and SARIF export
             if [ -n "\${SCAN_ID}" ]; then
+                # Get detailed JSON results
                 curl -s -H "X-AIK-API-SECRET: \${AIKIDO_CLIENT_API_KEY}" \\
                   "https://app.aikido.dev/api/integrations/continuous_integration/scan/repository?scan_id=\${SCAN_ID}" \\
                   > ${env.ARTIFACTS_DIR}/aikido-scan-details.json
+
+                # Export native SARIF format from Aikido
+                echo "📥 Downloading SARIF report from Aikido..."
+                curl -s -H "X-AIK-API-SECRET: \${AIKIDO_CLIENT_API_KEY}" \\
+                  "https://app.aikido.dev/api/v1/issues/export/sarif?repository_id=\${REPO_NAME}" \\
+                  > ${env.ARTIFACTS_DIR}/aikido-scan.sarif || echo "⚠️  SARIF export failed"
             fi
 
             # Generate summary
