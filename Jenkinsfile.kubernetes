@@ -378,27 +378,64 @@ EOF
 
                         def argoAppName = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev' : 'fitness-tracker-test'
 
-                        echo "🔍 Verifying deployment (simplified - GitOps auto-sync)..."
+                        echo "🔍 Verifying deployment - waiting for pods with correct image..."
                         echo "   ArgoCD App: ${argoAppName}"
                         echo "   Expected Image: ${IMAGE_NAME}:${IMAGE_TAG}"
                         echo "   Target Cluster: ${clusterIp}"
-                        echo ""
-                        echo "ℹ️  ArgoCD is configured with auto-sync"
-                        echo "ℹ️  Helm values updated in Git → ArgoCD will deploy automatically"
+                        echo "   Namespace: ${appNamespace}"
                         echo ""
 
-                        // Simplified verification: just wait a bit for ArgoCD to sync
+                        // Use kubectl from kind-igs context to check pods in kind-dev cluster
                         sh """
-                            echo "⏳ Waiting for ArgoCD auto-sync to complete (30 seconds)..."
-                            sleep 30
+                            EXPECTED_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
+                            TARGET_CONTEXT="kind-kind-dev"
+                            if [ "${appNamespace}" = "test" ]; then
+                                TARGET_CONTEXT="kind-kind-test"
+                            fi
 
-                            echo "✅ GitOps deployment initiated"
-                            echo "ℹ️  ArgoCD app: ${argoAppName}"
-                            echo "ℹ️  Image: ${IMAGE_NAME}:${IMAGE_TAG}"
-                            echo ""
-                            echo "📊 To check deployment status:"
-                            echo "   argocd app get ${argoAppName}"
-                            echo "   kubectl get pods -n ${appNamespace}"
+                            echo "🔄 Switching to context: \${TARGET_CONTEXT}"
+                            kubectl config use-context \${TARGET_CONTEXT}
+
+                            MAX_ATTEMPTS=60
+                            ATTEMPT=0
+                            READY_PODS=0
+                            EXPECTED_REPLICAS=4
+
+                            echo "⏳ Waiting for pods to update to image: \${EXPECTED_IMAGE}"
+
+                            while [ \$ATTEMPT -lt \$MAX_ATTEMPTS ]; do
+                                ATTEMPT=\$((ATTEMPT + 1))
+
+                                # Count pods running the expected image AND ready
+                                READY_PODS=\$(kubectl get pods -n ${appNamespace} -l app=fitness-tracker -o json 2>/dev/null | \
+                                    jq -r '.items[] | select(.spec.containers[0].image == "'"\${EXPECTED_IMAGE}"'") | select(.status.conditions[] | select(.type == "Ready" and .status == "True")) | .metadata.name' | wc -l || echo 0)
+
+                                TOTAL_PODS=\$(kubectl get pods -n ${appNamespace} -l app=fitness-tracker --no-headers 2>/dev/null | wc -l || echo 0)
+
+                                echo "[\$ATTEMPT/\$MAX_ATTEMPTS] Ready pods with correct image: \${READY_PODS}/\${EXPECTED_REPLICAS} (Total pods: \${TOTAL_PODS})"
+
+                                if [ "\${READY_PODS}" -ge "\${EXPECTED_REPLICAS}" ]; then
+                                    echo "✅ All \${EXPECTED_REPLICAS} pods are ready with image: \${EXPECTED_IMAGE}"
+
+                                    # Verify health endpoint
+                                    if curl -s -f ${env.HEALTH_CHECK_URL}/actuator/health > /dev/null 2>&1; then
+                                        echo "✅ Health endpoint responding"
+                                    else
+                                        echo "⚠️  Health endpoint not responding yet, but pods are ready"
+                                    fi
+
+                                    # Switch back to kind-igs context
+                                    kubectl config use-context kind-igs
+                                    exit 0
+                                fi
+
+                                sleep 5
+                            done
+
+                            echo "❌ Timeout: Only \${READY_PODS} pods ready after \$((MAX_ATTEMPTS * 5)) seconds"
+                            kubectl get pods -n ${appNamespace} -l app=fitness-tracker
+                            kubectl config use-context kind-igs
+                            exit 1
                         """
 
                         if (env.DOCKER_ARTIFACT_ID && env.DOCKER_ARTIFACT_ID != 'null' && env.DOCKER_ARTIFACT_ID != 'unknown') {
