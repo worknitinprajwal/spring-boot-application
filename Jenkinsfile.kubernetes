@@ -34,7 +34,8 @@ spec:
     - name: maven-cache
       mountPath: /root/.m2
     - name: kubeconfig
-      mountPath: /root/.kube
+      mountPath: /root/.kube/config
+      subPath: config
       readOnly: true
   - name: kaniko
     image: gcr.io/kaniko-project/executor:debug
