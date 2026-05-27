@@ -74,6 +74,24 @@ def runAikidoScan() {
                     else
                         echo "⚠️  SARIF export returned empty file"
                     fi
+
+                    # Test: Fetch issues as JSON to see what data is available
+                    echo ""
+                    echo "🔍 Testing Aikido API - fetching issues as JSON..."
+                    curl -s -H "X-AIK-API-SECRET: \${AIKIDO_CLIENT_API_KEY}" \\
+                      "https://app.aikido.dev/api/v1/issues?repository_id=\${AIKIDO_REPO_ID}&limit=5" \\
+                      > ${env.ARTIFACTS_DIR}/aikido-issues.json
+
+                    if [ -s ${env.ARTIFACTS_DIR}/aikido-issues.json ]; then
+                        ISSUE_COUNT=\$(jq '.items | length' ${env.ARTIFACTS_DIR}/aikido-issues.json 2>/dev/null || echo "0")
+                        echo "   Found \${ISSUE_COUNT} issues in JSON API"
+                        if [ "\${ISSUE_COUNT}" -gt "0" ]; then
+                            echo "   Sample issue:"
+                            jq '.items[0] | {id, severity, title, status}' ${env.ARTIFACTS_DIR}/aikido-issues.json 2>/dev/null || echo "   (failed to parse)"
+                        fi
+                    else
+                        echo "   No issues returned from JSON API"
+                    fi
                 fi
             fi
 
