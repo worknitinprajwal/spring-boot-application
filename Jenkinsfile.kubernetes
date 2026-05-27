@@ -30,13 +30,15 @@ spec:
       limits:
         memory: "2Gi"
         cpu: "1000m"
+    env:
+    - name: KUBECONFIG_CONTENT
+      valueFrom:
+        secretKeyRef:
+          name: cross-cluster-kubeconfig
+          key: config
     volumeMounts:
     - name: maven-cache
       mountPath: /root/.m2
-    - name: kubeconfig
-      mountPath: /root/.kube/config
-      subPath: config
-      readOnly: true
   - name: kaniko
     image: gcr.io/kaniko-project/executor:debug
     command: ['sleep']
@@ -89,9 +91,6 @@ spec:
     emptyDir: {}
   - name: docker-config
     emptyDir: {}
-  - name: kubeconfig
-    secret:
-      secretName: cross-cluster-kubeconfig
   - name: zap-workdir
     emptyDir: {}
 """
@@ -401,6 +400,19 @@ EOF
                             fi
                         """
 
+                        // Create kubeconfig from environment variable
+                        sh """
+                            echo "📝 Creating kubeconfig from environment variable..."
+                            mkdir -p /root/.kube
+                            echo "\${KUBECONFIG_CONTENT}" > /root/.kube/config
+                            chmod 600 /root/.kube/config
+
+                            echo "✅ Kubeconfig created"
+                            echo "   File size: \$(wc -c < /root/.kube/config) bytes"
+                            echo "   Contexts available:"
+                            kubectl config get-contexts --no-headers | awk '{print "     - " \$2}'
+                        """
+
                         // Verify pods are running the NEW image
                         sh """
                             EXPECTED_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
@@ -410,39 +422,10 @@ EOF
                             fi
 
                             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                            echo "🔍 Debugging kubectl configuration..."
+                            echo "🔍 Verifying deployment in cluster..."
                             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-                            echo "1. Checking mount point:"
-                            ls -la /root/.kube/ 2>&1 || echo "   ⚠️  Directory not found"
-                            echo ""
-
-                            echo "2. Contents of kubeconfig:"
-                            if [ -f /root/.kube/config ]; then
-                                echo "   ✅ Config file exists"
-                                echo "   File size: \$(wc -c < /root/.kube/config) bytes"
-                            else
-                                echo "   ❌ Config file NOT found"
-                            fi
-                            echo ""
-
-                            echo "3. Raw config file contexts (grep):"
-                            grep -E "^  name:|^- name:" /root/.kube/config | head -15
-                            echo ""
-
-                            echo "4. Raw config file servers:"
-                            grep "server:" /root/.kube/config
-                            echo ""
-
-                            echo "5. Kubectl config view:"
-                            kubectl config view 2>&1 || echo "   ⚠️  Cannot view config"
-                            echo ""
-
-                            echo "6. Available contexts:"
-                            kubectl config get-contexts 2>&1 || echo "   ⚠️  Cannot list contexts"
-                            echo ""
-
-                            echo "7. Attempting to use context \${TARGET_CONTEXT}:"
+                            echo "🔄 Switching to context: \${TARGET_CONTEXT}"
                             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
                             echo ""
 
