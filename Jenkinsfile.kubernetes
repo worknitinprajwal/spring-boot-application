@@ -385,6 +385,24 @@ EOF
                         echo "   Namespace: ${appNamespace}"
                         echo ""
 
+                        // Install kubectl and jq if not present
+                        sh """
+                            if ! command -v kubectl > /dev/null 2>&1; then
+                                echo "📦 Installing kubectl..."
+                                curl -sLO "https://dl.k8s.io/release/\$(curl -sL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+                                chmod +x kubectl
+                                mv kubectl /usr/local/bin/
+                            fi
+
+                            if ! command -v jq > /dev/null 2>&1; then
+                                echo "📦 Installing jq..."
+                                apt-get update -qq > /dev/null 2>&1
+                                apt-get install -y -qq jq > /dev/null 2>&1
+                            fi
+
+                            echo "✅ Tools ready"
+                        """
+
                         // Use kubectl from kind-igs context to check pods in kind-dev cluster
                         sh """
                             EXPECTED_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
