@@ -247,14 +247,22 @@ EOF
                         sh """
                             echo "Image: ${IMAGE_NAME}:${IMAGE_TAG}" >> ${ARTIFACTS_DIR}/build-info.txt
                             echo "Registry: ${DOCKER_REGISTRY}" >> ${ARTIFACTS_DIR}/build-info.txt
+                            echo "Docker URL: docker.io/${IMAGE_NAME}:${IMAGE_TAG}" >> ${ARTIFACTS_DIR}/build-info.txt
+                            echo "Build Number: ${BUILD_NUMBER}" >> ${ARTIFACTS_DIR}/build-info.txt
+                            echo "Git Commit: ${GIT_COMMIT}" >> ${ARTIFACTS_DIR}/build-info.txt
                         """
+
+                        echo "📦 Publishing Docker image to CloudBees Unify..."
+                        echo "   Image: ${IMAGE_NAME}:${IMAGE_TAG}"
+                        echo "   Registry: docker.io"
+                        echo "   URL: https://hub.docker.com/r/${IMAGE_NAME}/tags"
 
                         env.DOCKER_ARTIFACT_ID = unifyPublisher().publishBuildArtifact(
                             name: "fitness-tracker-docker",
                             version: "${IMAGE_TAG}",
                             url: "docker.io/${IMAGE_NAME}:${IMAGE_TAG}",
                             type: "Docker",
-                            label: env.BRANCH_NAME == 'develop' ? 'development,latest' : 'test,stable'
+                            label: env.BRANCH_NAME == 'develop' ? 'development,latest,docker' : 'test,stable,docker'
                         )
                     }
                 }
@@ -361,10 +369,19 @@ EOF
 
                         if (env.DOCKER_ARTIFACT_ID) {
                             def targetEnv = env.BRANCH_NAME == 'develop' ? 'Development' : 'Test'
+                            def argoApp = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev' : 'fitness-tracker-test'
+                            def clusterName = env.BRANCH_NAME == 'develop' ? 'kind-dev' : 'kind-test'
+
+                            echo "🚀 Publishing deployment to CloudBees Unify..."
+                            echo "   Environment: ${targetEnv}"
+                            echo "   ArgoCD App: ${argoApp}"
+                            echo "   Cluster: ${clusterName}"
+                            echo "   Image: ${IMAGE_NAME}:${IMAGE_TAG}"
+
                             unifyPublisher().publishDeployment(
                                 artifactId: env.DOCKER_ARTIFACT_ID,
                                 targetEnvironment: targetEnv,
-                                labels: "argocd,gitops"
+                                labels: "argocd,gitops,${clusterName},${argoApp}"
                             )
                         }
                     }
