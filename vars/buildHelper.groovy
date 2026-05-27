@@ -130,10 +130,11 @@ def updateHelmChart(String imageTag, String imageName) {
             git config user.email "ci@cloudbees.com"
             git config user.name "CloudBees CI"
 
-            # Pull latest
-            git pull --rebase https://\${GIT_USER}:\${GIT_PASS}@github.com/anuddeeph2/sample-spring-boot-app.git ${env.BRANCH_NAME} || {
-                git rebase --abort 2>/dev/null || true
-            }
+            # Fetch latest without merging
+            git fetch https://\${GIT_USER}:\${GIT_PASS}@github.com/anuddeeph2/sample-spring-boot-app.git ${env.BRANCH_NAME}
+
+            # Reset to fetched state to avoid conflicts
+            git reset --hard FETCH_HEAD
 
             # Update values.yaml
             cd k8s/helm-chart
@@ -146,8 +147,12 @@ def updateHelmChart(String imageTag, String imageName) {
 
             # Commit and push
             git add k8s/helm-chart/values.yaml
-            git commit -m "Update image tag to ${imageTag} [skip ci]" || echo "No changes"
-            git push https://\${GIT_USER}:\${GIT_PASS}@github.com/anuddeeph2/sample-spring-boot-app.git HEAD:${env.BRANCH_NAME} || echo "⚠️  Push failed"
+            if git commit -m "Update image tag to ${imageTag} [skip ci]"; then
+                git push https://\${GIT_USER}:\${GIT_PASS}@github.com/anuddeeph2/sample-spring-boot-app.git HEAD:${env.BRANCH_NAME}
+                echo "✅ Helm chart updated and pushed"
+            else
+                echo "ℹ️  No changes to push"
+            fi
         """
     }
 }
