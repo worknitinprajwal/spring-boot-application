@@ -401,36 +401,31 @@ EOF
                         """
 
                         // Create kubeconfig from environment variable
-                        // Read from system env since KUBECONFIG_CONTENT is set in pod spec
-                        echo "📝 Creating kubeconfig from environment variable..."
+                        // KUBECONFIG_CONTENT is injected via pod spec env from secret
+                        echo "📝 Setting up kubectl with cross-cluster kubeconfig..."
+
                         sh '''
                             set -e
 
-                            # Check if env var is set (it's injected via pod spec)
+                            # Debug: Check if env var exists
+                            echo "Checking KUBECONFIG_CONTENT env var..."
                             if [ -z "${KUBECONFIG_CONTENT}" ]; then
-                                echo "❌ ERROR: KUBECONFIG_CONTENT environment variable is not set!"
-                                echo "   This should be injected from the cross-cluster-kubeconfig secret"
+                                echo "❌ ERROR: KUBECONFIG_CONTENT not set!"
+                                echo "Available env vars:"
+                                env | sort | head -20
                                 exit 1
                             fi
 
-                            echo "   Env var is set, length: ${#KUBECONFIG_CONTENT} chars"
+                            echo "✅ Env var found (${#KUBECONFIG_CONTENT} chars)"
 
-                            # Create kubeconfig directory
+                            # Create kubectl config - using exact method from successful local test
                             mkdir -p /root/.kube
-
-                            # Write config using printf to preserve exact content
                             printf "%s" "${KUBECONFIG_CONTENT}" > /root/.kube/config
                             chmod 600 /root/.kube/config
 
-                            if [ ! -f /root/.kube/config ]; then
-                                echo "❌ ERROR: Failed to create config file!"
-                                exit 1
-                            fi
-
-                            echo "✅ Kubeconfig created successfully"
-                            echo "   File size: $(wc -c < /root/.kube/config) bytes"
-                            echo "   Available contexts:"
-                            kubectl config get-contexts --no-headers | awk '{print "     - " $2}'
+                            echo "✅ Config created ($(wc -c < /root/.kube/config) bytes)"
+                            echo "Available contexts:"
+                            kubectl config get-contexts --no-headers | awk '{print "  - " $2}'
                         '''
 
                         // Verify pods are running the NEW image
