@@ -401,19 +401,25 @@ EOF
                         """
 
                         // Create kubeconfig from environment variable
-                        sh """
+                        // Read from system env since KUBECONFIG_CONTENT is set in pod spec
+                        echo "📝 Creating kubeconfig from environment variable..."
+                        sh '''
                             set -e
-                            echo "📝 Creating kubeconfig from environment variable..."
 
-                            if [ -z "\${KUBECONFIG_CONTENT}" ]; then
+                            # Check if env var is set (it's injected via pod spec)
+                            if [ -z "${KUBECONFIG_CONTENT}" ]; then
                                 echo "❌ ERROR: KUBECONFIG_CONTENT environment variable is not set!"
+                                echo "   This should be injected from the cross-cluster-kubeconfig secret"
                                 exit 1
                             fi
 
-                            echo "   Env var is set, length: \${#KUBECONFIG_CONTENT} chars"
+                            echo "   Env var is set, length: ${#KUBECONFIG_CONTENT} chars"
 
+                            # Create kubeconfig directory
                             mkdir -p /root/.kube
-                            printf "%s" "\${KUBECONFIG_CONTENT}" > /root/.kube/config
+
+                            # Write config using printf to preserve exact content
+                            printf "%s" "${KUBECONFIG_CONTENT}" > /root/.kube/config
                             chmod 600 /root/.kube/config
 
                             if [ ! -f /root/.kube/config ]; then
@@ -422,10 +428,10 @@ EOF
                             fi
 
                             echo "✅ Kubeconfig created successfully"
-                            echo "   File size: \$(wc -c < /root/.kube/config) bytes"
+                            echo "   File size: $(wc -c < /root/.kube/config) bytes"
                             echo "   Available contexts:"
-                            kubectl config get-contexts --no-headers | awk '{print "     - " \$2}'
-                        """
+                            kubectl config get-contexts --no-headers | awk '{print "     - " $2}'
+                        '''
 
                         // Verify pods are running the NEW image
                         sh """
