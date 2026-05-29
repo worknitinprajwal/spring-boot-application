@@ -396,22 +396,42 @@ EOF
                         """
 
                         // Create kubeconfig from Kubernetes secret
-                        // Since Jenkins sh blocks don't inherit pod env vars, extract directly from secret
                         echo "📝 Setting up kubectl with cross-cluster kubeconfig..."
 
                         sh '''
-                            set -e
+                            set -ex  # Enable command echoing for debugging
 
-                            # Extract kubeconfig directly from Kubernetes secret
-                            echo "Extracting kubeconfig from secret..."
+                            echo "Step 1: Create .kube directory"
                             mkdir -p /root/.kube
 
+                            echo "Step 2: Extract secret from Kubernetes"
+                            if kubectl get secret cross-cluster-kubeconfig -n default > /dev/null 2>&1; then
+                                echo "  ✅ Secret exists"
+                            else
+                                echo "  ❌ Secret not found or no access!"
+                                kubectl get secrets -n default | head -5
+                                exit 1
+                            fi
+
+                            echo "Step 3: Decode and write config"
                             kubectl get secret cross-cluster-kubeconfig -n default -o jsonpath='{.data.config}' | base64 -d > /root/.kube/config
+
+                            FILE_SIZE=$(wc -c < /root/.kube/config)
+                            echo "Step 4: Verify config file"
+                            echo "  File size: ${FILE_SIZE} bytes"
+
+                            if [ "${FILE_SIZE}" -lt 100 ]; then
+                                echo "  ❌ Config file too small! Content:"
+                                cat /root/.kube/config
+                                exit 1
+                            fi
+
                             chmod 600 /root/.kube/config
 
-                            echo "✅ Config extracted ($(wc -c < /root/.kube/config) bytes)"
-                            echo "Available contexts:"
-                            kubectl config get-contexts --no-headers | awk '{print "  - " $2}'
+                            echo "Step 5: List contexts"
+                            kubectl config get-contexts
+
+                            echo "✅ Kubeconfig setup complete!"
                         '''
 
                         // Verify pods are running the NEW image
