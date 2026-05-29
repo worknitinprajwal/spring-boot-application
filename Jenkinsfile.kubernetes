@@ -17,6 +17,7 @@ metadata:
   labels:
     jenkins: agent
 spec:
+  serviceAccountName: jenkins-agent
   containers:
   - name: maven
     image: maven:3.9-eclipse-temurin-21
@@ -30,12 +31,6 @@ spec:
       limits:
         memory: "2Gi"
         cpu: "1000m"
-    env:
-    - name: KUBECONFIG_CONTENT
-      valueFrom:
-        secretKeyRef:
-          name: cross-cluster-kubeconfig
-          key: config
     volumeMounts:
     - name: maven-cache
       mountPath: /root/.m2
@@ -400,30 +395,21 @@ EOF
                             fi
                         """
 
-                        // Create kubeconfig from environment variable
-                        // KUBECONFIG_CONTENT is injected via pod spec env from secret
+                        // Create kubeconfig from Kubernetes secret
+                        // Since Jenkins sh blocks don't inherit pod env vars, extract directly from secret
                         echo "📝 Setting up kubectl with cross-cluster kubeconfig..."
 
                         sh '''
                             set -e
 
-                            # Debug: Check if env var exists
-                            echo "Checking KUBECONFIG_CONTENT env var..."
-                            if [ -z "${KUBECONFIG_CONTENT}" ]; then
-                                echo "❌ ERROR: KUBECONFIG_CONTENT not set!"
-                                echo "Available env vars:"
-                                env | sort | head -20
-                                exit 1
-                            fi
-
-                            echo "✅ Env var found (${#KUBECONFIG_CONTENT} chars)"
-
-                            # Create kubectl config - using exact method from successful local test
+                            # Extract kubeconfig directly from Kubernetes secret
+                            echo "Extracting kubeconfig from secret..."
                             mkdir -p /root/.kube
-                            printf "%s" "${KUBECONFIG_CONTENT}" > /root/.kube/config
+
+                            kubectl get secret cross-cluster-kubeconfig -n default -o jsonpath='{.data.config}' | base64 -d > /root/.kube/config
                             chmod 600 /root/.kube/config
 
-                            echo "✅ Config created ($(wc -c < /root/.kube/config) bytes)"
+                            echo "✅ Config extracted ($(wc -c < /root/.kube/config) bytes)"
                             echo "Available contexts:"
                             kubectl config get-contexts --no-headers | awk '{print "  - " $2}'
                         '''
