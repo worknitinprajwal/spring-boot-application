@@ -395,63 +395,37 @@ EOF
                             fi
                         """
 
-                        // Create kubeconfig from Kubernetes secret
-                        echo "📝 Setting up kubectl with cross-cluster kubeconfig..."
+                        // Use direct kubectl API calls (WORKING METHOD from May 22)
+                        // No kubeconfig needed - use --server, --token, --certificate-authority flags
+                        echo "📝 Setting up kubectl for cross-cluster access..."
 
-                        sh '''
-                            set -ex  # Enable command echoing for debugging
+                        // Define kubectl command with in-cluster auth for remote clusters
+                        def kubectlDev = "kubectl --server=https://172.18.0.5:6443 --token=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/token) --certificate-authority=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt --insecure-skip-tls-verify=true"
+                        def kubectlTest = "kubectl --server=https://172.18.0.8:6443 --token=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/token) --certificate-authority=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt --insecure-skip-tls-verify=true"
 
-                            echo "Step 1: Create .kube directory"
-                            mkdir -p /root/.kube
+                        def kubectlCmd = appNamespace == 'dev' ? kubectlDev : kubectlTest
 
-                            echo "Step 2: Extract secret from Kubernetes"
-                            if kubectl get secret cross-cluster-kubeconfig -n default > /dev/null 2>&1; then
-                                echo "  ✅ Secret exists"
-                            else
-                                echo "  ❌ Secret not found or no access!"
-                                kubectl get secrets -n default | head -5
-                                exit 1
-                            fi
+                        echo "✅ Using direct API access (no kubeconfig needed)"
+                        echo "   Target: ${appNamespace} cluster"
 
-                            echo "Step 3: Decode and write config"
-                            kubectl get secret cross-cluster-kubeconfig -n default -o jsonpath='{.data.config}' | base64 -d > /root/.kube/config
-
-                            FILE_SIZE=$(wc -c < /root/.kube/config)
-                            echo "Step 4: Verify config file"
-                            echo "  File size: ${FILE_SIZE} bytes"
-
-                            if [ "${FILE_SIZE}" -lt 100 ]; then
-                                echo "  ❌ Config file too small! Content:"
-                                cat /root/.kube/config
-                                exit 1
-                            fi
-
-                            chmod 600 /root/.kube/config
-
-                            echo "Step 5: List contexts"
-                            kubectl config get-contexts
-
-                            echo "✅ Kubeconfig setup complete!"
-                        '''
-
-                        // Verify pods are running the NEW image
+                        // Verify pods are running the NEW image (using direct API)
                         sh """
+                            set -e
                             EXPECTED_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
-                            TARGET_CONTEXT="kind-kind-dev"
-                            if [ "${appNamespace}" = "test" ]; then
-                                TARGET_CONTEXT="kind-kind-test"
-                            fi
+                            KUBECTL="${kubectlCmd}"
 
                             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-                            echo "🔍 Verifying deployment in cluster..."
+                            echo "🔍 Verifying deployment in ${appNamespace} cluster..."
                             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-                            echo "🔄 Switching to context: \${TARGET_CONTEXT}"
-                            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                            # Test cluster connectivity
+                            echo "Testing cluster connectivity..."
+                            \${KUBECTL} get nodes -o wide || {
+                                echo "❌ Cannot connect to cluster"
+                                exit 1
+                            }
+                            echo "✅ Cluster accessible"
                             echo ""
-
-                            echo "🔄 Switching to context: \${TARGET_CONTEXT}"
-                            kubectl config use-context \${TARGET_CONTEXT}
 
                             MAX_ATTEMPTS=60
                             ATTEMPT=0
@@ -469,14 +443,14 @@ EOF
                                 ATTEMPT=\$((ATTEMPT + 1))
 
                                 # Get ALL pod images
-                                CURRENT_IMAGES=\$(kubectl get pods -n ${appNamespace} -l app=fitness-tracker -o json 2>/dev/null | \
+                                CURRENT_IMAGES=\$(\${KUBECTL} get pods -n ${appNamespace} -l app=fitness-tracker -o json 2>/dev/null | \
                                     jq -r '.items[].spec.containers[0].image' 2>/dev/null | sort -u)
 
                                 # Count pods with CORRECT image that are READY
-                                READY_WITH_NEW_IMAGE=\$(kubectl get pods -n ${appNamespace} -l app=fitness-tracker -o json 2>/dev/null | \
+                                READY_WITH_NEW_IMAGE=\$(\${KUBECTL} get pods -n ${appNamespace} -l app=fitness-tracker -o json 2>/dev/null | \
                                     jq -r ".items[] | select(.spec.containers[0].image == \\"\${EXPECTED_IMAGE}\\") | select(.status.conditions[]? | select(.type == \\"Ready\\" and .status == \\"True\\")) | .metadata.name" 2>/dev/null | wc -l)
 
-                                TOTAL_PODS=\$(kubectl get pods -n ${appNamespace} -l app=fitness-tracker --no-headers 2>/dev/null | wc -l || echo 0)
+                                TOTAL_PODS=\$(\${KUBECTL} get pods -n ${appNamespace} -l app=fitness-tracker --no-headers 2>/dev/null | wc -l || echo 0)
 
                                 echo "[\$ATTEMPT/\$MAX_ATTEMPTS] Ready with NEW image: \${READY_WITH_NEW_IMAGE}/\${EXPECTED_REPLICAS} (Total pods: \${TOTAL_PODS})"
                                 echo "   Current images in use:"
@@ -487,7 +461,6 @@ EOF
                                     echo "✅ All \${EXPECTED_REPLICAS} pods are READY with NEW image: \${EXPECTED_IMAGE}"
 
                                     # Verify health endpoint
-                                    kubectl config use-context kind-igs
                                     if curl -s -f ${env.HEALTH_CHECK_URL}/actuator/health > /dev/null 2>&1; then
                                         echo "✅ Health endpoint responding"
                                     fi
