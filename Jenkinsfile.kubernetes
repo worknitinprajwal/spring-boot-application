@@ -593,11 +593,12 @@ EOF
                                 script {
                                     try {
                                         testReporter().archiveZAPReports()
-                                        securityScanner().convertZAPToSARIF()
-                                        securityScanner().publishZAPToUnify()
+                                        // Skip SARIF conversion and Unify publishing for ZAP
+                                        // ZAP reports are available in build artifacts
+                                        // securityScanner().convertZAPToSARIF()
+                                        // securityScanner().publishZAPToUnify()
                                     } catch (Exception e) {
-                                        echo "⚠️  Error in ZAP post-processing: ${e.class.name}: ${e.message}"
-                                        echo "Stack trace: ${e.getStackTrace()}"
+                                        echo "⚠️  Error in ZAP post-processing: ${e.message}"
                                     }
                                 }
                             }
