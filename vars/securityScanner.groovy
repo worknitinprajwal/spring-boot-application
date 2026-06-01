@@ -26,13 +26,17 @@ def runAikidoScan() {
             REPO_URL=\$(git config --get remote.origin.url)
             REPO_NAME=\$(basename "\${REPO_URL}" .git)
 
-            # Extract owner/repo from git URL for API queries
-            if [[ "\${REPO_URL}" =~ github.com[:/]([^/]+)/([^/.]+) ]]; then
-                REPO_OWNER="\${BASH_REMATCH[1]}"
-                REPO_FULL_NAME="\${REPO_OWNER}/\${REPO_NAME}"
-            else
-                REPO_FULL_NAME="\${REPO_NAME}"
-            fi
+            # Extract owner/repo from git URL for API queries (POSIX-compliant)
+            case "\${REPO_URL}" in
+                *github.com:*/*|*github.com/*/*)
+                    # Extract owner from github.com:owner/repo or github.com/owner/repo
+                    REPO_OWNER=\$(echo "\${REPO_URL}" | sed -n 's|.*github.com[:/]\\([^/]*\\)/.*|\\1|p')
+                    REPO_FULL_NAME="\${REPO_OWNER}/\${REPO_NAME}"
+                    ;;
+                *)
+                    REPO_FULL_NAME="\${REPO_NAME}"
+                    ;;
+            esac
 
             # Run scan
             (aikido-api-client scan-release "\${REPO_NAME}" "${env.GIT_COMMIT}" \\
