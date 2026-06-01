@@ -22,9 +22,17 @@ def runAikidoScan() {
             # Install Aikido
             npm install -g @aikidosec/ci-api-client@latest || echo "Warning: Install failed"
 
-            # Get repo name
+            # Get repo name with owner (e.g., "anuddeeph2/sample-spring-boot-app")
             REPO_URL=\$(git config --get remote.origin.url)
             REPO_NAME=\$(basename "\${REPO_URL}" .git)
+
+            # Extract owner/repo from git URL for API queries
+            if [[ "\${REPO_URL}" =~ github.com[:/]([^/]+)/([^/.]+) ]]; then
+                REPO_OWNER="\${BASH_REMATCH[1]}"
+                REPO_FULL_NAME="\${REPO_OWNER}/\${REPO_NAME}"
+            else
+                REPO_FULL_NAME="\${REPO_NAME}"
+            fi
 
             # Run scan
             (aikido-api-client scan-release "\${REPO_NAME}" "${env.GIT_COMMIT}" \\
@@ -49,12 +57,23 @@ def runAikidoScan() {
                   "https://app.aikido.dev/api/integrations/continuous_integration/scan/repository?scan_id=\${SCAN_ID}" \\
                   > ${env.ARTIFACTS_DIR}/aikido-scan-details.json
 
-                # Also export actual issues using Public API for CloudBees Unify
+                # Export actual issues using Public API for CloudBees Unify
+                # Try multiple filter combinations to find issues
                 echo "📥 Fetching issue details from Public API..."
-                echo "   Repository name: \${REPO_NAME}"
+                echo "   Repository: \${REPO_FULL_NAME}"
+
+                # Try with full repo name and all severities first
                 curl -s -H "Authorization: Bearer \${AIKIDO_CLIENT_API_KEY}" \\
-                  "https://app.aikido.dev/api/public/v1/issues/export?format=json&filter_status=open&filter_code_repo_name=\${REPO_NAME}&filter_severities=critical,high" \\
+                  "https://app.aikido.dev/api/public/v1/issues/export?format=json&filter_status=open&filter_code_repo_name=\${REPO_FULL_NAME}" \\
                   > ${env.ARTIFACTS_DIR}/aikido-issues-export.json
+
+                # If that didn't work, try with just repo name
+                if [ ! -s ${env.ARTIFACTS_DIR}/aikido-issues-export.json ] || [ "\$(jq -r '.issues | length' ${env.ARTIFACTS_DIR}/aikido-issues-export.json 2>/dev/null || echo '0')" == "0" ]; then
+                    echo "   Trying with repo name only: \${REPO_NAME}"
+                    curl -s -H "Authorization: Bearer \${AIKIDO_CLIENT_API_KEY}" \\
+                      "https://app.aikido.dev/api/public/v1/issues/export?format=json&filter_status=open&filter_code_repo_name=\${REPO_NAME}" \\
+                      > ${env.ARTIFACTS_DIR}/aikido-issues-export.json
+                fi
 
                 if [ -s ${env.ARTIFACTS_DIR}/aikido-issues-export.json ]; then
                     ISSUE_COUNT=\$(jq -r '.issues | length' ${env.ARTIFACTS_DIR}/aikido-issues-export.json 2>/dev/null || echo "0")
