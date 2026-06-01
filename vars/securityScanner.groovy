@@ -164,12 +164,13 @@ def publishAikidoToUnify() {
         def aikidoSarif = "build-artifacts/aikido-scan.sarif"
 
         // Register SARIF file which contains actual vulnerability details
+        // Use archive: false since we already archived with archiveArtifacts
         if (fileExists(aikidoSarif)) {
             registerSecurityScan(
                 artifacts: aikidoSarif,
                 format: 'sarif',
                 scanner: 'Aikido',
-                archive: true
+                archive: false
             )
             echo "✅ Aikido scan registered (SARIF with vulnerability details)"
         } else {
