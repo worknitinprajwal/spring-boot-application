@@ -161,25 +161,19 @@ SARIF_EOF
 
 def publishAikidoToUnify() {
     try {
-        def aikidoJson = "build-artifacts/aikido-scan-details.json"
         def aikidoSarif = "build-artifacts/aikido-scan.sarif"
 
-        if (fileExists(aikidoJson)) {
-            registerSecurityScan(
-                artifacts: aikidoJson,
-                format: 'json',
-                scanner: 'Aikido',
-                archive: false
-            )
-            echo "✅ Aikido scan registered (JSON)"
-        } else if (fileExists(aikidoSarif)) {
+        // Register SARIF file which contains actual vulnerability details
+        if (fileExists(aikidoSarif)) {
             registerSecurityScan(
                 artifacts: aikidoSarif,
                 format: 'sarif',
                 scanner: 'Aikido',
-                archive: false
+                archive: true
             )
-            echo "✅ Aikido scan registered (SARIF)"
+            echo "✅ Aikido scan registered (SARIF with vulnerability details)"
+        } else {
+            echo "⚠️  Aikido SARIF file not found"
         }
     } catch (Exception e) {
         echo "⚠️  Failed to register Aikido scan: ${e.message}"
