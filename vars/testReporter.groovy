@@ -64,18 +64,9 @@ def archiveUITests() {
     archiveArtifacts artifacts: 'build-artifacts/uipath-reports/**/*', allowEmptyArchive: true
     junit allowEmptyResults: true, testResults: 'build-artifacts/uipath-reports/uipath-junit.xml'
 
-    try {
-        publishHTML(target: [
-            allowMissing: true,
-            alwaysLinkToLastBuild: true,
-            keepAll: true,
-            reportDir: 'build-artifacts/uipath-reports',
-            reportFiles: 'uipath-report.html',
-            reportName: 'UiPath UI Tests'
-        ])
-    } catch (Exception e) {
-        echo "⚠️  UiPath HTML report publishing failed: ${e.message}"
-    }
+    // Skip publishHTML due to plugin compatibility issues
+    // Reports are available in build artifacts
+    echo "📄 UiPath reports archived to build-artifacts/uipath-reports/"
 }
 
 def createTestDashboard() {
@@ -175,18 +166,9 @@ def createTestDashboard() {
 INDEXEOF
     """
 
-    try {
-        publishHTML(target: [
-            allowMissing: true,
-            alwaysLinkToLastBuild: true,
-            keepAll: true,
-            reportDir: 'build-artifacts',
-            reportFiles: 'test-reports-index.html',
-            reportName: 'Test Reports Dashboard'
-        ])
-    } catch (Exception e) {
-        echo "⚠️  Test dashboard HTML report publishing failed: ${e.message}"
-    }
+    // Skip publishHTML due to plugin compatibility issues
+    // Dashboard is available in build artifacts at build-artifacts/test-reports-index.html
+    echo "📄 Test dashboard created at build-artifacts/test-reports-index.html"
 }
 
 return this
