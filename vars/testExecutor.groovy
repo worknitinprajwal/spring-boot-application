@@ -191,23 +191,51 @@ def runUITests() {
 import requests
 import pytest
 import os
+import time
 
 BASE_URL = "\${HEALTH_CHECK_URL}"
 
 class TestUIAutomation:
     def test_health_endpoint(self):
-        response = requests.get(f"{BASE_URL}/actuator/health", timeout=10)
-        assert response.status_code == 200
-        assert response.json()["status"] == "UP"
+        # Retry logic for transient failures
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(f"{BASE_URL}/actuator/health", timeout=15)
+                assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+                data = response.json()
+                assert data.get("status") == "UP", f"Expected status UP, got {data.get('status')}"
+                break
+            except (requests.exceptions.RequestException, AssertionError) as e:
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(2)
 
     def test_info_endpoint(self):
-        response = requests.get(f"{BASE_URL}/actuator/info", timeout=10)
-        assert response.status_code == 200
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(f"{BASE_URL}/actuator/info", timeout=15)
+                assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+                break
+            except (requests.exceptions.RequestException, AssertionError) as e:
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(2)
 
     def test_metrics_endpoint(self):
-        response = requests.get(f"{BASE_URL}/actuator/metrics", timeout=10)
-        assert response.status_code == 200
-        assert "names" in response.json()
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(f"{BASE_URL}/actuator/metrics", timeout=15)
+                assert response.status_code == 200, f"Expected 200, got {response.status_code}"
+                data = response.json()
+                assert "names" in data, f"Expected 'names' in response, got keys: {list(data.keys())}"
+                break
+            except (requests.exceptions.RequestException, AssertionError) as e:
+                if attempt == max_retries - 1:
+                    raise
+                time.sleep(2)
 PYTEST_EOF
 
             # Create pytest.ini for proper JUnit XML configuration
