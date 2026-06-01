@@ -697,11 +697,28 @@ EOF
                                 TRUE_FAILURE=\$(grep -c ',false,' ${ARTIFACTS_DIR}/jmeter-reports/results.jtl || echo 0)
                                 TOTAL=\$((TRUE_SUCCESS + TRUE_FAILURE))
 
+                                # Calculate success rate for SLA
+                                if [ \$TOTAL -gt 0 ]; then
+                                    SUCCESS_RATE=\$(echo "scale=2; (\$TRUE_SUCCESS * 100) / \$TOTAL" | bc)
+                                else
+                                    SUCCESS_RATE=0
+                                fi
+
+                                # Convert JMeter results to JUnit XML format for CloudBees Unify
                                 cat > ${ARTIFACTS_DIR}/jmeter-reports/jmeter-junit.xml << JUNITEOF
 <?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="JMeter Performance Tests" tests="\$TOTAL" failures="\$TRUE_FAILURE">
-  <testcase classname="JMeter" name="Performance Test Suite" time="120">
-    <system-out>Total: \$TOTAL, Failed: \$TRUE_FAILURE</system-out>
+<testsuite name="JMeter Performance Tests" tests="\$TOTAL" failures="\$TRUE_FAILURE" time="120" timestamp="\$(date -u +%Y-%m-%dT%H:%M:%S)">
+  <properties>
+    <property name="test.type" value="JMETER"/>
+    <property name="success.rate" value="\${SUCCESS_RATE}%"/>
+  </properties>
+  <testcase classname="performance.LoadTest" name="HTTP Request Performance Test" time="120">
+    <system-out>
+Total Requests: \$TOTAL
+Successful: \$TRUE_SUCCESS
+Failed: \$TRUE_FAILURE
+Success Rate: \${SUCCESS_RATE}%
+    </system-out>
   </testcase>
 </testsuite>
 JUNITEOF
