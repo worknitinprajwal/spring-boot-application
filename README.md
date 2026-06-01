@@ -350,6 +350,9 @@ curl http://fitness-tracker.local/actuator
 ## License
 
 MIT License - Sample application for demonstration purposes.
+
+---
+*Last updated: June 2026*
 # Test webhook trigger - Mon May 18 13:17:52 IST 2026
 # Webhook test - 2026-05-18 13:34:07
 # Webhook test - 2026-05-18 13:44:50
