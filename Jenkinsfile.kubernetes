@@ -180,9 +180,10 @@ spec:
                     container('maven') {
                         script {
                             try {
-                                // SARIF conversion already happens in runAikidoScan()
-                                // Just archive and publish here
-                                archiveArtifacts artifacts: 'build-artifacts/aikido-scan*.txt, build-artifacts/aikido-scan*.json, build-artifacts/aikido-scan*.sarif', allowEmptyArchive: true
+                                // SARIF conversion happens in runAikidoScan()
+                                // Archive supporting files (registerSecurityScan will archive the SARIF)
+                                archiveArtifacts artifacts: 'build-artifacts/aikido-scan*.txt, build-artifacts/aikido-scan*.json', allowEmptyArchive: true
+                                // registerSecurityScan with archive:true will handle SARIF archiving
                                 securityScanner().publishAikidoToUnify()
                             } catch (Exception e) {
                                 echo "⚠️ Aikido post-processing failed: ${e.message}"

@@ -120,16 +120,15 @@ def publishAikidoToUnify() {
     try {
         def aikidoSarif = "build-artifacts/aikido-scan.sarif"
 
-        // Register SARIF file which contains actual vulnerability details
-        // Use archive: false since we already archived with archiveArtifacts
+        // Register SARIF file - archive must be true for CloudBees Unify to display it
         if (fileExists(aikidoSarif)) {
             registerSecurityScan(
                 artifacts: aikidoSarif,
                 format: 'sarif',
                 scanner: 'Aikido',
-                archive: false
+                archive: true  // Changed to true - required for Unify visibility
             )
-            echo "✅ Aikido scan registered (SARIF with vulnerability details)"
+            echo "✅ Aikido scan registered with archiving enabled"
         } else {
             echo "⚠️  Aikido SARIF file not found"
         }
