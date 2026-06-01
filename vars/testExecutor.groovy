@@ -148,29 +148,30 @@ def runZAPTests() {
         sh script: """
             set +e
 
-            # ZAP writes to /zap/wrk/ by default
-            cd /zap
-            mkdir -p wrk/reports
+            # ZAP's working directory is /zap/wrk/ - create reports dir there
+            mkdir -p /zap/wrk/reports
 
+            # Use paths relative to ZAP's working dir (/zap/wrk/)
+            cd /zap
             zap-baseline.py \\
                 -t \${HEALTH_CHECK_URL}/actuator/health \\
                 -g baseline-config.conf \\
-                -J wrk/reports/baseline-report.json \\
-                -r wrk/reports/baseline-report.html \\
-                2>&1 | tee wrk/reports/scan-output.txt || true
+                -J reports/baseline-report.json \\
+                -r reports/baseline-report.html \\
+                2>&1 | tee /zap/wrk/reports/scan-output.txt || true
 
             # Parse results
-            WARN_COUNT=\$(grep "^WARN-NEW:.*x " wrk/reports/scan-output.txt | wc -l || echo 0)
-            FAIL_COUNT=\$(grep "^FAIL-NEW:.*x " wrk/reports/scan-output.txt | wc -l || echo 0)
+            WARN_COUNT=\$(grep "^WARN-NEW:.*x " /zap/wrk/reports/scan-output.txt | wc -l || echo 0)
+            FAIL_COUNT=\$(grep "^FAIL-NEW:.*x " /zap/wrk/reports/scan-output.txt | wc -l || echo 0)
 
-            cat > wrk/reports/metrics-summary.txt << SUMMARYEOF
+            cat > /zap/wrk/reports/metrics-summary.txt << SUMMARYEOF
 Security Scan Results
 Warnings: \${WARN_COUNT}
 Failures: \${FAIL_COUNT}
 SUMMARYEOF
 
             mkdir -p \${ARTIFACTS_DIR}/zap-reports
-            cp -r wrk/reports/* \${ARTIFACTS_DIR}/zap-reports/ 2>/dev/null || true
+            cp -r /zap/wrk/reports/* \${ARTIFACTS_DIR}/zap-reports/ 2>/dev/null || true
 
             [ \${FAIL_COUNT} -eq 0 ] && exit 0 || exit 1
         """, returnStdout: false
