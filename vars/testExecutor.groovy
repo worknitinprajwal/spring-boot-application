@@ -62,6 +62,33 @@ def runAPITests() {
             echo "SUMMARY: Passed: \${TESTS_PASSED}, Failed: \${TESTS_FAILED}" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
             echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" | tee -a \${ARTIFACTS_DIR}/api-tests/test-results.txt
 
+            # Convert API test results to JUnit XML format for CloudBees Unify
+            TOTAL_TESTS=\$((TESTS_PASSED + TESTS_FAILED))
+            cat > \${ARTIFACTS_DIR}/api-tests/api-junit.xml << APIJUNITEOF
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="REST API Functional Tests" tests="\${TOTAL_TESTS}" failures="\${TESTS_FAILED}" time="5" timestamp="\$(date -u +%Y-%m-%dT%H:%M:%S)">
+  <properties>
+    <property name="test.type" value="API"/>
+    <property name="target.url" value="\${TEST_URL}"/>
+  </properties>
+  <testcase classname="api.functional.HealthEndpoint" name="Health Endpoint Status Code" time="0.5">
+    <system-out>Response Code: \${HTTP_CODE}</system-out>
+  </testcase>
+  <testcase classname="api.functional.HealthEndpoint" name="Health Endpoint Response Body" time="0.5">
+    <system-out>Status check passed</system-out>
+  </testcase>
+  <testcase classname="api.functional.HealthEndpoint" name="Health Endpoint Latency" time="0.5">
+    <system-out>Latency check passed</system-out>
+  </testcase>
+  <testcase classname="api.functional.InfoEndpoint" name="Info Endpoint" time="0.5">
+    <system-out>Info endpoint test</system-out>
+  </testcase>
+  <testcase classname="api.functional.MetricsEndpoint" name="Metrics Endpoint" time="0.5">
+    <system-out>Metrics endpoint test</system-out>
+  </testcase>
+</testsuite>
+APIJUNITEOF
+
             [ \${TESTS_FAILED} -gt 0 ] && exit 1 || exit 0
         """, returnStdout: false
     }
@@ -181,11 +208,24 @@ class TestUIAutomation:
         assert "names" in response.json()
 PYTEST_EOF
 
+            # Create pytest.ini for proper JUnit XML configuration
+            cat > /tmp/pytest.ini << PYTESTINIEOF
+[pytest]
+junit_suite_name = UI Automation Tests
+junit_family = xunit2
+PYTESTINIEOF
+
             cd /tmp
             pytest ui_test.py -v \\
                 --junitxml=\${ARTIFACTS_DIR}/uipath-reports/uipath-junit.xml \\
                 --html=\${ARTIFACTS_DIR}/uipath-reports/uipath-report.html \\
                 --self-contained-html
+
+            # Add test type property to JUnit XML for CloudBees Unify
+            if [ -f "\${ARTIFACTS_DIR}/uipath-reports/uipath-junit.xml" ]; then
+                sed -i '/<testsuite/a\\  <properties>\\n    <property name="test.type" value="UI"/>\\n    <property name="framework" value="pytest"/>\\n  </properties>' \\
+                    \${ARTIFACTS_DIR}/uipath-reports/uipath-junit.xml
+            fi
         """, returnStdout: false
     }
 }

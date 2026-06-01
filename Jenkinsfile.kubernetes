@@ -726,7 +726,7 @@ JUNITEOF
                         """
 
                         unifyPublisher().publishTestResults(
-                            testResults: 'target/surefire-reports/*.xml,build-artifacts/jmeter-reports/jmeter-junit.xml,build-artifacts/uipath-reports/uipath-junit.xml'
+                            testResults: 'target/surefire-reports/*.xml,build-artifacts/api-tests/api-junit.xml,build-artifacts/jmeter-reports/jmeter-junit.xml,build-artifacts/uipath-reports/uipath-junit.xml'
                         )
                     }
                 }
