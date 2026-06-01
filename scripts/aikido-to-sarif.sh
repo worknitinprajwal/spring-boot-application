@@ -51,10 +51,20 @@ if [ "$DEPENDENCY_ISSUES" -gt 0 ]; then
           "message": {
             "text": "${DEPENDENCY_ISSUES} dependency vulnerabilities found. View details at ${DIFF_URL}"
           },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "pom.xml"
+                }
+              }
+            }
+          ],
           "properties": {
             "severity": "high",
             "issue_type": "dependency",
-            "count": ${DEPENDENCY_ISSUES}
+            "count": ${DEPENDENCY_ISSUES},
+            "tags": ["security", "dependency", "aikido"]
           }
         }
 EOF
@@ -71,10 +81,20 @@ if [ "$SAST_ISSUES" -gt 0 ]; then
           "message": {
             "text": "${SAST_ISSUES} SAST security issues found. View details at ${DIFF_URL}"
           },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/"
+                }
+              }
+            }
+          ],
           "properties": {
             "severity": "high",
             "issue_type": "sast",
-            "count": ${SAST_ISSUES}
+            "count": ${SAST_ISSUES},
+            "tags": ["security", "sast", "aikido"]
           }
         }
 EOF
