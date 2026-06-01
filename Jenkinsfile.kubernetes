@@ -431,7 +431,7 @@ EOF
                             echo "✅ Cluster accessible"
                             echo ""
 
-                            MAX_ATTEMPTS=60
+                            MAX_ATTEMPTS=84
                             ATTEMPT=0
                             EXPECTED_REPLICAS=4
 
