@@ -62,7 +62,10 @@ def archiveZAPReports() {
 
 def archiveUITests() {
     archiveArtifacts artifacts: 'build-artifacts/uipath-reports/**/*', allowEmptyArchive: true
-    junit allowEmptyResults: true, testResults: 'build-artifacts/uipath-reports/uipath-junit.xml'
+
+    // Disable GitHub Checks publishing to avoid warnings
+    // Test results are published to CloudBees Unify instead
+    junit allowEmptyResults: true, testResults: 'build-artifacts/uipath-reports/uipath-junit.xml', skipPublishingChecks: true
 
     // Skip publishHTML due to plugin compatibility issues
     // Reports are available in build artifacts
