@@ -51,9 +51,17 @@ def runAikidoScan() {
 
                 # Also export actual issues using Public API for CloudBees Unify
                 echo "📥 Fetching issue details from Public API..."
+                echo "   Repository name: \${REPO_NAME}"
                 curl -s -H "Authorization: Bearer \${AIKIDO_CLIENT_API_KEY}" \\
                   "https://app.aikido.dev/api/public/v1/issues/export?format=json&filter_status=open&filter_code_repo_name=\${REPO_NAME}&filter_severities=critical,high" \\
                   > ${env.ARTIFACTS_DIR}/aikido-issues-export.json
+
+                if [ -s ${env.ARTIFACTS_DIR}/aikido-issues-export.json ]; then
+                    ISSUE_COUNT=\$(jq -r '.issues | length' ${env.ARTIFACTS_DIR}/aikido-issues-export.json 2>/dev/null || echo "0")
+                    echo "   ✅ Retrieved \${ISSUE_COUNT} issues from Public API"
+                else
+                    echo "   ⚠️  No issues retrieved from Public API (empty or failed)"
+                fi
 
                 if [ -s ${env.ARTIFACTS_DIR}/aikido-scan-details.json ]; then
                     echo "✅ Scan details retrieved"
