@@ -706,9 +706,9 @@ EOF
                                 TRUE_FAILURE=\$(grep -c ',false,' ${ARTIFACTS_DIR}/jmeter-reports/results.jtl || echo 0)
                                 TOTAL=\$((TRUE_SUCCESS + TRUE_FAILURE))
 
-                                # Calculate success rate for SLA
+                                # Calculate success rate using awk (bc not available)
                                 if [ \$TOTAL -gt 0 ]; then
-                                    SUCCESS_RATE=\$(echo "scale=2; (\$TRUE_SUCCESS * 100) / \$TOTAL" | bc)
+                                    SUCCESS_RATE=\$(awk "BEGIN {printf \\"%.2f\\", (\$TRUE_SUCCESS * 100) / \$TOTAL}")
                                 else
                                     SUCCESS_RATE=0
                                 fi
