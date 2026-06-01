@@ -38,53 +38,26 @@ HTMLEOF
         fi
     """
 
-    try {
-        publishHTML(target: [
-            allowMissing: true,
-            alwaysLinkToLastBuild: true,
-            keepAll: true,
-            reportDir: 'build-artifacts/api-tests',
-            reportFiles: 'index.html',
-            reportName: 'API Functional Tests'
-        ])
-    } catch (Exception e) {
-        echo "⚠️  API test HTML report publishing failed: ${e.message}"
-    }
+    // Skip publishHTML due to plugin compatibility issues
+    // Reports are available in build artifacts
+    echo "📄 API test reports archived to build-artifacts/api-tests/"
 }
 
 def archiveJMeterReports() {
     archiveArtifacts artifacts: 'build-artifacts/jmeter-reports/**/*', allowEmptyArchive: true
     archiveArtifacts artifacts: 'tests/jmeter/*.jmx', allowEmptyArchive: true
 
-    try {
-        publishHTML(target: [
-            allowMissing: true,
-            alwaysLinkToLastBuild: true,
-            keepAll: true,
-            reportDir: 'build-artifacts/jmeter-reports/html',
-            reportFiles: 'index.html',
-            reportName: 'JMeter Performance Report'
-        ])
-    } catch (Exception e) {
-        echo "⚠️  JMeter HTML report publishing failed: ${e.message}"
-    }
+    // Skip publishHTML due to plugin compatibility issues
+    // Reports are available in build artifacts
+    echo "📄 JMeter reports archived to build-artifacts/jmeter-reports/html/"
 }
 
 def archiveZAPReports() {
     archiveArtifacts artifacts: 'build-artifacts/zap-reports/**/*', allowEmptyArchive: true
 
-    try {
-        publishHTML(target: [
-            allowMissing: true,
-            alwaysLinkToLastBuild: true,
-            keepAll: true,
-            reportDir: 'build-artifacts/zap-reports',
-            reportFiles: 'baseline-report.html',
-            reportName: 'OWASP ZAP Security Report'
-        ])
-    } catch (Exception e) {
-        echo "⚠️  ZAP HTML report publishing failed: ${e.message}"
-    }
+    // Skip publishHTML due to plugin compatibility issues
+    // Reports are available in build artifacts
+    echo "📄 ZAP reports archived to build-artifacts/zap-reports/"
 }
 
 def archiveUITests() {
