@@ -400,8 +400,8 @@ EOF
                         echo "📝 Setting up kubectl for cross-cluster access..."
 
                         // Define kubectl command with in-cluster auth for remote clusters
-                        def kubectlDev = "kubectl --server=https://172.18.0.5:6443 --token=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/token) --certificate-authority=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt --insecure-skip-tls-verify=true"
-                        def kubectlTest = "kubectl --server=https://172.18.0.8:6443 --token=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/token) --certificate-authority=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt --insecure-skip-tls-verify=true"
+                        def kubectlDev = "kubectl --server=https://172.18.0.5:6443 --token=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/token) --insecure-skip-tls-verify=true"
+                        def kubectlTest = "kubectl --server=https://172.18.0.8:6443 --token=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/token) --insecure-skip-tls-verify=true"
 
                         def kubectlCmd = appNamespace == 'dev' ? kubectlDev : kubectlTest
 
