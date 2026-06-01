@@ -399,13 +399,17 @@ EOF
                         // No kubeconfig needed - use --server, --token, --certificate-authority flags
                         echo "📝 Setting up kubectl for cross-cluster access..."
 
-                        // Define kubectl command with in-cluster auth for remote clusters
-                        def kubectlDev = "kubectl --server=https://172.18.0.5:6443 --token=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/token) --insecure-skip-tls-verify=true"
-                        def kubectlTest = "kubectl --server=https://172.18.0.8:6443 --token=\$(cat /var/run/secrets/kubernetes.io/serviceaccount/token) --insecure-skip-tls-verify=true"
+                        // Extract kubeconfig from secret
+                        sh """
+                            kubectl get secret cross-cluster-kubeconfig -n cloudbees-ci -o jsonpath='{.data.config}' | base64 -d > /tmp/kubeconfig
+                            export KUBECONFIG=/tmp/kubeconfig
+                            kubectl config get-contexts
+                        """
 
-                        def kubectlCmd = appNamespace == 'dev' ? kubectlDev : kubectlTest
+                        def kubectlContext = appNamespace == 'dev' ? 'kind-kind-dev' : 'kind-kind-test'
+                        def kubectlCmd = "kubectl --kubeconfig=/tmp/kubeconfig --context=${kubectlContext}"
 
-                        echo "✅ Using direct API access (no kubeconfig needed)"
+                        echo "✅ Using kubeconfig with context: ${kubectlContext}"
                         echo "   Target: ${appNamespace} cluster"
 
                         // Verify pods are running the NEW image (using direct API)
