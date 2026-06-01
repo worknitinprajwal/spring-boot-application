@@ -180,14 +180,12 @@ spec:
                     container('maven') {
                         script {
                             try {
-                                securityScanner().convertAikidoToSARIF()
-                            } catch (Exception e) {
-                                echo "⚠️ SARIF conversion failed: ${e.message}"
-                            }
-                            try {
+                                // SARIF conversion already happens in runAikidoScan()
+                                // Just archive and publish here
+                                archiveArtifacts artifacts: 'build-artifacts/aikido-scan*.{txt,json,sarif}', allowEmptyArchive: true
                                 securityScanner().publishAikidoToUnify()
                             } catch (Exception e) {
-                                echo "⚠️ Unify publishing failed: ${e.message}"
+                                echo "⚠️ Aikido post-processing failed: ${e.message}"
                             }
                         }
                     }

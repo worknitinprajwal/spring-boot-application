@@ -130,65 +130,8 @@ def runAikidoScan() {
     }
 }
 
-def convertAikidoToSARIF() {
-    sh """
-        apt-get update -qq && apt-get install -y -qq jq > /dev/null 2>&1 || true
-
-        if [ -f "build-artifacts/aikido-scan-details.json" ]; then
-            SCAN_ID=\$(jq -r '.scan_id // "unknown"' build-artifacts/aikido-scan-details.json 2>/dev/null || echo 'unknown')
-
-            cat > build-artifacts/aikido-scan.sarif << 'SARIF_EOF'
-{
-  "\$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-  "version": "2.1.0",
-  "runs": [
-    {
-      "tool": {
-        "driver": {
-          "name": "Aikido Security",
-          "informationUri": "https://aikido.dev",
-          "semanticVersion": "1.0.0",
-          "organization": "Aikido"
-        }
-      },
-      "results": [],
-      "properties": {
-        "sourceFile": "aikido-scan-details.json",
-        "scanId": "placeholder"
-      },
-      "columnKind": "utf16CodeUnits"
-    }
-  ]
-}
-SARIF_EOF
-
-            # Replace placeholder with actual scan ID
-            sed -i "s/\"placeholder\"/\"\${SCAN_ID}\"/" build-artifacts/aikido-scan.sarif
-        else
-            cat > build-artifacts/aikido-scan.sarif << 'SARIF_EOF'
-{
-  "\$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-  "version": "2.1.0",
-  "runs": [
-    {
-      "tool": {
-        "driver": {
-          "name": "Aikido Security",
-          "informationUri": "https://aikido.dev",
-          "semanticVersion": "1.0.0"
-        }
-      },
-      "results": [],
-      "columnKind": "utf16CodeUnits"
-    }
-  ]
-}
-SARIF_EOF
-        fi
-    """
-
-    archiveArtifacts artifacts: 'build-artifacts/aikido-scan*.{txt,json,sarif}', allowEmptyArchive: true
-}
+// convertAikidoToSARIF() removed - SARIF conversion now happens in runAikidoScan()
+// via scripts/aikido-to-sarif.sh which properly includes vulnerability details
 
 def publishAikidoToUnify() {
     try {
