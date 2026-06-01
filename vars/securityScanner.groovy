@@ -118,22 +118,33 @@ def runAikidoScan() {
 
 def publishAikidoToUnify() {
     try {
-        def aikidoSarif = "build-artifacts/aikido-scan.sarif"
+        // Use relative path from workspace - registerSecurityScan expects workspace-relative paths
+        def aikidoSarifRelative = "build-artifacts/aikido-scan.sarif"
+        def aikidoSarifAbsolute = "${env.WORKSPACE}/${aikidoSarifRelative}"
 
-        // Register SARIF file - archive must be true for CloudBees Unify to display it
-        if (fileExists(aikidoSarif)) {
+        echo "🔍 Checking for SARIF at: ${aikidoSarifAbsolute}"
+
+        // Verify file exists
+        if (fileExists(aikidoSarifRelative)) {
+            sh "ls -lh '${aikidoSarifAbsolute}'"
+
+            // Register SARIF file with relative path
+            // artifacts parameter expects workspace-relative path pattern
             registerSecurityScan(
-                artifacts: aikidoSarif,
+                artifacts: aikidoSarifRelative,
                 format: 'sarif',
                 scanner: 'Aikido',
-                archive: true  // Changed to true - required for Unify visibility
+                archive: true  // Required for Unify visibility
             )
-            echo "✅ Aikido scan registered with archiving enabled"
+            echo "✅ Aikido scan registered: ${aikidoSarifRelative}"
         } else {
-            echo "⚠️  Aikido SARIF file not found"
+            echo "⚠️  Aikido SARIF file not found at: ${aikidoSarifAbsolute}"
+            sh "ls -la '${env.WORKSPACE}/build-artifacts/' || echo 'build-artifacts directory not found'"
         }
     } catch (Exception e) {
         echo "⚠️  Failed to register Aikido scan: ${e.message}"
+        // Show what files are available
+        sh "find '${env.WORKSPACE}/build-artifacts' -name '*.sarif' -o -name 'aikido*' || true"
     }
 }
 
