@@ -129,7 +129,8 @@ def publishTestResults(Map config = [:]) {
         echo "📊 Publishing test results to CloudBees Unify..."
         junit(
             testResults: testResults,
-            allowEmptyResults: allowEmpty
+            allowEmptyResults: allowEmpty,
+            skipPublishingChecks: true  // Disable GitHub Checks to avoid warnings
         )
         echo "✅ Test results published to CloudBees Unify"
     } catch (Exception e) {
