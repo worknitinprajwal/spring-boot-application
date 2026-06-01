@@ -1,9 +1,8 @@
 #!/bin/bash
-# Convert Aikido scan details JSON to SARIF format with detailed findings
+# Convert Aikido scan details JSON to SARIF format with findings
 
 AIKIDO_JSON="${1:-build-artifacts/aikido-scan-details.json}"
 OUTPUT_SARIF="${2:-build-artifacts/aikido-scan.sarif}"
-ISSUES_JSON="build-artifacts/aikido-issues-export.json"
 
 if [ ! -f "${AIKIDO_JSON}" ]; then
     echo "Error: Aikido scan details not found at ${AIKIDO_JSON}"
@@ -38,23 +37,52 @@ cat > "${OUTPUT_SARIF}" << 'SARIF_START'
       "results": [
 SARIF_START
 
-# Add issue details if available
-if [ -f "${ISSUES_JSON}" ] && [ -s "${ISSUES_JSON}" ]; then
-    # Convert Aikido issues to SARIF results format (first 20 for brevity)
-    jq -r '.issues[:20] | to_entries | .[] |
-      "        {\n" +
-      "          \"ruleId\": \"aikido-\(.value.issue_type // "unknown")\",\n" +
-      "          \"level\": \"\(if .value.severity == "critical" then "error" elif .value.severity == "high" then "error" elif .value.severity == "medium" then "warning" else "note" end)\",\n" +
-      "          \"message\": {\n" +
-      "            \"text\": \"\(.value.title // "Security issue detected")\"\n" +
-      "          },\n" +
-      "          \"properties\": {\n" +
-      "            \"severity\": \"\(.value.severity // "unknown")\",\n" +
-      "            \"issue_type\": \"\(.value.issue_type // "unknown")\"\n" +
-      "          }\n" +
-      "        }\(if .key < 19 then "," else "" end)"' "${ISSUES_JSON}" >> "${OUTPUT_SARIF}" 2>/dev/null || echo "        {}" >> "${OUTPUT_SARIF}"
-else
-    # No detailed issues, add placeholder
+# Create placeholder result entries based on issue counts
+# This ensures CloudBees Unify has something to display
+RESULT_COUNT=0
+
+# Add dependency issue placeholder
+if [ "$DEPENDENCY_ISSUES" -gt 0 ]; then
+    [ $RESULT_COUNT -gt 0 ] && echo "        ," >> "${OUTPUT_SARIF}"
+    cat >> "${OUTPUT_SARIF}" << EOF
+        {
+          "ruleId": "aikido-dependency-vulnerabilities",
+          "level": "error",
+          "message": {
+            "text": "${DEPENDENCY_ISSUES} dependency vulnerabilities found. View details at ${DIFF_URL}"
+          },
+          "properties": {
+            "severity": "high",
+            "issue_type": "dependency",
+            "count": ${DEPENDENCY_ISSUES}
+          }
+        }
+EOF
+    RESULT_COUNT=$((RESULT_COUNT + 1))
+fi
+
+# Add SAST issue placeholder
+if [ "$SAST_ISSUES" -gt 0 ]; then
+    [ $RESULT_COUNT -gt 0 ] && echo "        ," >> "${OUTPUT_SARIF}"
+    cat >> "${OUTPUT_SARIF}" << EOF
+        {
+          "ruleId": "aikido-sast-issues",
+          "level": "error",
+          "message": {
+            "text": "${SAST_ISSUES} SAST security issues found. View details at ${DIFF_URL}"
+          },
+          "properties": {
+            "severity": "high",
+            "issue_type": "sast",
+            "count": ${SAST_ISSUES}
+          }
+        }
+EOF
+    RESULT_COUNT=$((RESULT_COUNT + 1))
+fi
+
+# If no issues, add empty placeholder
+if [ $RESULT_COUNT -eq 0 ]; then
     echo "        {}" >> "${OUTPUT_SARIF}"
 fi
 

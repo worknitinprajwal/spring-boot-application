@@ -62,36 +62,9 @@ def runAikidoScan() {
                   "https://app.aikido.dev/api/integrations/continuous_integration/scan/repository?scan_id=\${SCAN_ID}" \\
                   > ${env.ARTIFACTS_DIR}/aikido-scan-details.json
 
-                # Export actual issues using Public API for CloudBees Unify
-                echo "📥 Fetching issue details from Public API..."
-                echo "   Repository: \${REPO_FULL_NAME}"
-
-                # Try without repo filter to get all issues, then we'll filter in the script
-                echo "   Fetching all open issues (no repo filter)..."
-                curl -s -H "Authorization: Bearer \${AIKIDO_CLIENT_API_KEY}" \\
-                  "https://app.aikido.dev/api/public/v1/issues/export?format=json&filter_status=open" \\
-                  > ${env.ARTIFACTS_DIR}/aikido-issues-export-all.json
-
-                # Filter to just this repo using jq
-                if [ -s ${env.ARTIFACTS_DIR}/aikido-issues-export-all.json ]; then
-                    TOTAL_ISSUES=\$(jq -r '.issues | length' ${env.ARTIFACTS_DIR}/aikido-issues-export-all.json 2>/dev/null || echo '0')
-                    echo "   Retrieved \${TOTAL_ISSUES} total issues from API"
-
-                    # Filter to just this repo (try multiple name variations)
-                    # Use grep-style matching with contains instead of regex test
-                    jq --arg short "\${REPO_NAME}" \\
-                      '{issues: [.issues[] | select((.code_repo_name // "") | contains(\$short))]}' \\
-                      ${env.ARTIFACTS_DIR}/aikido-issues-export-all.json > ${env.ARTIFACTS_DIR}/aikido-issues-export.json
-
-                    FILTERED_COUNT=\$(jq -r '.issues | length' ${env.ARTIFACTS_DIR}/aikido-issues-export.json 2>/dev/null || echo '0')
-                    echo "   Filtered to \${FILTERED_COUNT} issues for this repo"
-                else
-                    echo '{"issues":[]}' > ${env.ARTIFACTS_DIR}/aikido-issues-export.json
-                fi
-
-                # Log final count
-                ISSUE_COUNT=\$(jq -r '.issues | length' ${env.ARTIFACTS_DIR}/aikido-issues-export.json 2>/dev/null || echo "0")
-                echo "   ✅ Final issue count for SARIF: \${ISSUE_COUNT}"
+                echo "📥 CI API response received - will use for SARIF conversion"
+                # Skip Public API entirely - it returns 0 issues
+                # The SARIF converter will use summary data from CI API response
 
                 if [ -s ${env.ARTIFACTS_DIR}/aikido-scan-details.json ]; then
                     echo "✅ Scan details retrieved"
