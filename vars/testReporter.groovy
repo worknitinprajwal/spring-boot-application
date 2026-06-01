@@ -38,28 +38,36 @@ HTMLEOF
         fi
     """
 
-    publishHTML(target: [
-        allowMissing: true,
-        alwaysLinkToLastBuild: true,
-        keepAll: true,
-        reportDir: 'build-artifacts/api-tests',
-        reportFiles: 'index.html',
-        reportName: 'API Functional Tests'
-    ])
+    try {
+        publishHTML(target: [
+            allowMissing: true,
+            alwaysLinkToLastBuild: true,
+            keepAll: true,
+            reportDir: 'build-artifacts/api-tests',
+            reportFiles: 'index.html',
+            reportName: 'API Functional Tests'
+        ])
+    } catch (Exception e) {
+        echo "⚠️  API test HTML report publishing failed: ${e.message}"
+    }
 }
 
 def archiveJMeterReports() {
     archiveArtifacts artifacts: 'build-artifacts/jmeter-reports/**/*', allowEmptyArchive: true
     archiveArtifacts artifacts: 'tests/jmeter/*.jmx', allowEmptyArchive: true
 
-    publishHTML(target: [
-        allowMissing: true,
-        alwaysLinkToLastBuild: true,
-        keepAll: true,
-        reportDir: 'build-artifacts/jmeter-reports/html',
-        reportFiles: 'index.html',
-        reportName: 'JMeter Performance Report'
-    ])
+    try {
+        publishHTML(target: [
+            allowMissing: true,
+            alwaysLinkToLastBuild: true,
+            keepAll: true,
+            reportDir: 'build-artifacts/jmeter-reports/html',
+            reportFiles: 'index.html',
+            reportName: 'JMeter Performance Report'
+        ])
+    } catch (Exception e) {
+        echo "⚠️  JMeter HTML report publishing failed: ${e.message}"
+    }
 }
 
 def archiveZAPReports() {
@@ -83,14 +91,18 @@ def archiveUITests() {
     archiveArtifacts artifacts: 'build-artifacts/uipath-reports/**/*', allowEmptyArchive: true
     junit allowEmptyResults: true, testResults: 'build-artifacts/uipath-reports/uipath-junit.xml'
 
-    publishHTML(target: [
-        allowMissing: true,
-        alwaysLinkToLastBuild: true,
-        keepAll: true,
-        reportDir: 'build-artifacts/uipath-reports',
-        reportFiles: 'uipath-report.html',
-        reportName: 'UiPath UI Tests'
-    ])
+    try {
+        publishHTML(target: [
+            allowMissing: true,
+            alwaysLinkToLastBuild: true,
+            keepAll: true,
+            reportDir: 'build-artifacts/uipath-reports',
+            reportFiles: 'uipath-report.html',
+            reportName: 'UiPath UI Tests'
+        ])
+    } catch (Exception e) {
+        echo "⚠️  UiPath HTML report publishing failed: ${e.message}"
+    }
 }
 
 def createTestDashboard() {
@@ -190,14 +202,18 @@ def createTestDashboard() {
 INDEXEOF
     """
 
-    publishHTML(target: [
-        allowMissing: true,
-        alwaysLinkToLastBuild: true,
-        keepAll: true,
-        reportDir: 'build-artifacts',
-        reportFiles: 'test-reports-index.html',
-        reportName: 'Test Reports Dashboard'
-    ])
+    try {
+        publishHTML(target: [
+            allowMissing: true,
+            alwaysLinkToLastBuild: true,
+            keepAll: true,
+            reportDir: 'build-artifacts',
+            reportFiles: 'test-reports-index.html',
+            reportName: 'Test Reports Dashboard'
+        ])
+    } catch (Exception e) {
+        echo "⚠️  Test dashboard HTML report publishing failed: ${e.message}"
+    }
 }
 
 return this
