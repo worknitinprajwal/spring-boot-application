@@ -208,14 +208,25 @@ SARIF_EOF
 
 def publishZAPToUnify() {
     try {
-        if (fileExists('build-artifacts/zap-reports/zap-scan.sarif')) {
+        // Try to register the ZAP JSON report directly (native format)
+        if (fileExists('build-artifacts/zap-reports/baseline-report.json')) {
+            registerSecurityScan(
+                artifacts: 'build-artifacts/zap-reports/baseline-report.json',
+                format: 'json',
+                scanner: 'ZAP',
+                archive: true
+            )
+            echo "✅ ZAP scan registered (JSON format)"
+        } else if (fileExists('build-artifacts/zap-reports/zap-scan.sarif')) {
             registerSecurityScan(
                 artifacts: 'build-artifacts/zap-reports/zap-scan.sarif',
                 format: 'sarif',
-                scanner: 'OWASP ZAP',
+                scanner: 'ZAP',
                 archive: true
             )
-            echo "✅ ZAP scan registered"
+            echo "✅ ZAP scan registered (SARIF format)"
+        } else {
+            echo "⚠️  No ZAP report files found"
         }
     } catch (Exception e) {
         echo "⚠️  Failed to register ZAP scan: ${e.message}"

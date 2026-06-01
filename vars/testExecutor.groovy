@@ -127,7 +127,8 @@ def runZAPTests() {
             zap-baseline.py \\
                 -t \${HEALTH_CHECK_URL}/actuator/health \\
                 -g baseline-config.conf \\
-                -J baseline-report.json \\
+                -J reports/baseline-report.json \\
+                -r reports/baseline-report.html \\
                 2>&1 | tee reports/scan-output.txt || true
 
             # Parse results
