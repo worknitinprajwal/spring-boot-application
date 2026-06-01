@@ -49,18 +49,28 @@ def runAikidoScan() {
                   "https://app.aikido.dev/api/integrations/continuous_integration/scan/repository?scan_id=\${SCAN_ID}" \\
                   > ${env.ARTIFACTS_DIR}/aikido-scan-details.json
 
+                # Also export actual issues using Public API for CloudBees Unify
+                echo "📥 Fetching issue details from Public API..."
+                curl -s -H "Authorization: Bearer \${AIKIDO_CLIENT_API_KEY}" \\
+                  "https://app.aikido.dev/api/public/v1/issues/export?format=json&filter_status=open&filter_code_repo_name=\${REPO_NAME}&filter_severities=critical,high" \\
+                  > ${env.ARTIFACTS_DIR}/aikido-issues-export.json
+
                 if [ -s ${env.ARTIFACTS_DIR}/aikido-scan-details.json ]; then
                     echo "✅ Scan details retrieved"
 
                     # Extract summary
                     NEW_ISSUES=\$(jq -r '.new_issues_found // 0' ${env.ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo "0")
                     GATE_PASSED=\$(jq -r '.gate_passed // false' ${env.ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo "false")
+                    DEPENDENCY_ISSUES=\$(jq -r '.new_dependency_issues_found // 0' ${env.ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo "0")
+                    SAST_ISSUES=\$(jq -r '.new_sast_issues_found // 0' ${env.ARTIFACTS_DIR}/aikido-scan-details.json 2>/dev/null || echo "0")
 
                     echo "   New issues found: \${NEW_ISSUES}"
+                    echo "   Dependency issues: \${DEPENDENCY_ISSUES}"
+                    echo "   SAST issues: \${SAST_ISSUES}"
                     echo "   Gate passed: \${GATE_PASSED}"
                     echo "   Diff URL: \${DIFF_URL}"
 
-                    # Convert to SARIF format
+                    # Convert to SARIF format with detailed issues
                     echo ""
                     echo "📄 Converting to SARIF format..."
                     bash scripts/aikido-to-sarif.sh \\
