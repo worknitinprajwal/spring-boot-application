@@ -592,9 +592,14 @@ EOF
                         always {
                             container('maven') {
                                 script {
-                                    testReporter().archiveZAPReports()
-                                    securityScanner().convertZAPToSARIF()
-                                    securityScanner().publishZAPToUnify()
+                                    try {
+                                        testReporter().archiveZAPReports()
+                                        securityScanner().convertZAPToSARIF()
+                                        securityScanner().publishZAPToUnify()
+                                    } catch (Exception e) {
+                                        echo "⚠️  Error in ZAP post-processing: ${e.class.name}: ${e.message}"
+                                        echo "Stack trace: ${e.getStackTrace()}"
+                                    }
                                 }
                             }
                         }
@@ -610,7 +615,11 @@ EOF
                     post {
                         always {
                             script {
-                                testReporter().archiveUITests()
+                                try {
+                                    testReporter().archiveUITests()
+                                } catch (Exception e) {
+                                    echo "⚠️  Error in UI test archiving: ${e.class.name}: ${e.message}"
+                                }
                             }
                         }
                     }
