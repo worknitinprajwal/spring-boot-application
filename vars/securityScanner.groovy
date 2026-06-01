@@ -118,27 +118,29 @@ def runAikidoScan() {
 
 def publishAikidoToUnify() {
     try {
-        // Use relative path from workspace - registerSecurityScan expects workspace-relative paths
-        def aikidoSarifRelative = "build-artifacts/aikido-scan.sarif"
-        def aikidoSarifAbsolute = "${env.WORKSPACE}/${aikidoSarifRelative}"
+        def aikidoSarifSource = "build-artifacts/aikido-scan.sarif"
+        def aikidoSarifTarget = "aikido-scan.sarif"  // Copy to workspace root
 
-        echo "🔍 Checking for SARIF at: ${aikidoSarifAbsolute}"
+        echo "🔍 Checking for SARIF at: ${env.WORKSPACE}/${aikidoSarifSource}"
 
-        // Verify file exists
-        if (fileExists(aikidoSarifRelative)) {
-            sh "ls -lh '${aikidoSarifAbsolute}'"
+        // Verify source file exists
+        if (fileExists(aikidoSarifSource)) {
+            sh "ls -lh '${env.WORKSPACE}/${aikidoSarifSource}'"
 
-            // Register SARIF file with relative path
-            // artifacts parameter expects workspace-relative path pattern
+            // Copy SARIF to workspace root - registerSecurityScan expects files at workspace root
+            sh "cp '${env.WORKSPACE}/${aikidoSarifSource}' '${env.WORKSPACE}/${aikidoSarifTarget}'"
+            echo "📋 Copied SARIF to workspace root: ${aikidoSarifTarget}"
+
+            // Register SARIF file from workspace root
             registerSecurityScan(
-                artifacts: aikidoSarifRelative,
+                artifacts: aikidoSarifTarget,
                 format: 'sarif',
                 scanner: 'Aikido',
                 archive: true  // Required for Unify visibility
             )
-            echo "✅ Aikido scan registered: ${aikidoSarifRelative}"
+            echo "✅ Aikido scan registered: ${aikidoSarifTarget}"
         } else {
-            echo "⚠️  Aikido SARIF file not found at: ${aikidoSarifAbsolute}"
+            echo "⚠️  Aikido SARIF file not found at: ${env.WORKSPACE}/${aikidoSarifSource}"
             sh "ls -la '${env.WORKSPACE}/build-artifacts/' || echo 'build-artifacts directory not found'"
         }
     } catch (Exception e) {
