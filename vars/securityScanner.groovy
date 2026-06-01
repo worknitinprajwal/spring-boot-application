@@ -77,8 +77,9 @@ def runAikidoScan() {
                     echo "   Retrieved \${TOTAL_ISSUES} total issues from API"
 
                     # Filter to just this repo (try multiple name variations)
-                    jq --arg repo "\${REPO_FULL_NAME}" --arg short "\${REPO_NAME}" \\
-                      '{issues: [.issues[] | select((.code_repo_name // "") | test("\($short)"; "i"))]}' \\
+                    # Use grep-style matching with contains instead of regex test
+                    jq --arg short "\${REPO_NAME}" \\
+                      '{issues: [.issues[] | select((.code_repo_name // "") | contains(\$short))]}' \\
                       ${env.ARTIFACTS_DIR}/aikido-issues-export-all.json > ${env.ARTIFACTS_DIR}/aikido-issues-export.json
 
                     FILTERED_COUNT=\$(jq -r '.issues | length' ${env.ARTIFACTS_DIR}/aikido-issues-export.json 2>/dev/null || echo '0')
