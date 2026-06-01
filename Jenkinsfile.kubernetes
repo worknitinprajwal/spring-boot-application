@@ -182,7 +182,7 @@ spec:
                             try {
                                 // SARIF conversion already happens in runAikidoScan()
                                 // Just archive and publish here
-                                archiveArtifacts artifacts: 'build-artifacts/aikido-scan*.{txt,json,sarif}', allowEmptyArchive: true
+                                archiveArtifacts artifacts: 'build-artifacts/aikido-scan*.txt, build-artifacts/aikido-scan*.json, build-artifacts/aikido-scan*.sarif', allowEmptyArchive: true
                                 securityScanner().publishAikidoToUnify()
                             } catch (Exception e) {
                                 echo "⚠️ Aikido post-processing failed: ${e.message}"
