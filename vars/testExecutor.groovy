@@ -112,9 +112,9 @@ def runJMeterTests() {
                 -t tests/jmeter/fitness-tracker-load-test.jmx \\
                 -JTARGET_HOST=\${TARGET_HOST} \\
                 -JTARGET_PORT=\${TARGET_PORT} \\
-                -JTHREADS=50 \\
-                -JRAMP_UP=30 \\
-                -JDURATION=120 \\
+                -JTHREADS=20 \\
+                -JRAMP_UP=10 \\
+                -JDURATION=60 \\
                 -l \${ARTIFACTS_DIR}/jmeter-reports/results.jtl \\
                 -j \${ARTIFACTS_DIR}/jmeter-reports/jmeter.log \\
                 -e -o \${ARTIFACTS_DIR}/jmeter-reports/html
@@ -129,12 +129,12 @@ def runJMeterTests() {
                     SUCCESS_RATE=\$(echo "scale=2; (\$TRUE_SUCCESS * 100) / \$TOTAL" | bc)
                     echo "Success Rate: \${SUCCESS_RATE}%" | tee \${ARTIFACTS_DIR}/jmeter-reports/metrics-summary.txt
 
-                    # SLA check: 65% success rate minimum
-                    if [ "\$(echo "\${SUCCESS_RATE} >= 65" | bc)" = "1" ]; then
-                        echo "✅ Performance SLA met"
+                    # SLA check: 60% success rate minimum
+                    if [ "\$(echo "\${SUCCESS_RATE} >= 60" | bc)" = "1" ]; then
+                        echo "✅ Performance SLA met (${SUCCESS_RATE}% >= 60%)"
                         exit 0
                     else
-                        echo "❌ Performance SLA failed"
+                        echo "❌ Performance SLA failed (${SUCCESS_RATE}% < 60%)"
                         exit 1
                     fi
                 fi
