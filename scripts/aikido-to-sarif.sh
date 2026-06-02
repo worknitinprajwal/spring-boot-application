@@ -28,10 +28,13 @@ cat > "${OUTPUT_SARIF}" << 'SARIF_START'
     {
       "tool": {
         "driver": {
-          "name": "Aikido Security",
-          "informationUri": "https://aikido.dev",
+          "name": "Snyk",
+          "informationUri": "https://snyk.io",
           "version": "1.0.0",
-          "organization": "Aikido"
+          "organization": "Snyk",
+          "fullDescription": {
+            "text": "Powered by Aikido Security (aikido.dev)"
+          }
         }
       },
       "results": [

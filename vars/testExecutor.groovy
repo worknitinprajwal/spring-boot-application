@@ -186,7 +186,11 @@ def runUITests() {
             mkdir -p \${ARTIFACTS_DIR}/uipath-reports
             pip3 install --quiet requests pytest pytest-html > /dev/null 2>&1
 
-            # Use unquoted heredoc to allow variable expansion
+            # Export HEALTH_CHECK_URL for pytest to access
+            export HEALTH_CHECK_URL="\${HEALTH_CHECK_URL}"
+            echo "🔍 Using HEALTH_CHECK_URL: \${HEALTH_CHECK_URL}"
+
+            # Use single-quoted heredoc - Python will read from environment
             cat > /tmp/ui_test.py << 'PYTEST_EOF'
 import requests
 import pytest
@@ -194,6 +198,7 @@ import os
 import time
 
 BASE_URL = os.environ.get('HEALTH_CHECK_URL', 'http://localhost:8080')
+print(f"🎯 Testing against: {BASE_URL}")
 
 class TestUIAutomation:
     def test_health_endpoint(self):
@@ -244,9 +249,6 @@ PYTEST_EOF
 junit_suite_name = UI Automation Tests
 junit_family = xunit2
 PYTESTINIEOF
-
-            # Export HEALTH_CHECK_URL for pytest to access
-            export HEALTH_CHECK_URL="\${HEALTH_CHECK_URL}"
 
             cd /tmp
             # Run pytest - capture exit code but don't fail script

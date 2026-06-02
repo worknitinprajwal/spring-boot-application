@@ -108,6 +108,31 @@ def archiveBuildArtifacts() {
     if (fileExists('target')) {
         archiveArtifacts artifacts: 'target/*.jar', allowEmptyArchive: false, fingerprint: true
         echo "✅ JAR file archived successfully"
+
+        // Register JAR artifact in CloudBees Unify
+        try {
+            def jarFiles = findFiles(glob: 'target/*.jar')
+            if (jarFiles.length > 0) {
+                def jarFile = jarFiles[0]
+                def jarName = jarFile.name
+                def jarPath = jarFile.path
+
+                echo "📦 Registering JAR artifact in CloudBees Unify: ${jarName}"
+
+                def jarArtifactId = registerBuildArtifactMetadata(
+                    name: 'fitness-tracker-jar',
+                    version: "${env.BUILD_NUMBER}",
+                    url: "${env.BUILD_URL}artifact/${jarPath}",
+                    type: 'Generic',
+                    label: "${env.BRANCH_NAME},build-${env.BUILD_NUMBER}"
+                )
+
+                echo "✅ JAR artifact registered in Unify (ID: ${jarArtifactId})"
+                env.JAR_ARTIFACT_ID = jarArtifactId
+            }
+        } catch (Exception e) {
+            echo "⚠️  Failed to register JAR artifact in Unify: ${e.message}"
+        }
     } else {
         echo "❌ ERROR: target/ directory does not exist!"
     }
