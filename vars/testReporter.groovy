@@ -63,15 +63,10 @@ def archiveZAPReports() {
 def archiveUITests() {
     archiveArtifacts artifacts: 'build-artifacts/uipath-reports/**/*', allowEmptyArchive: true
 
-    // Record test results - catchError wrapper is at Jenkinsfile level
-    junit allowEmptyResults: true,
-          testResults: 'build-artifacts/uipath-reports/uipath-junit.xml',
-          skipPublishingChecks: true,
-          healthScaleFactor: 0.0
-
-    // Skip publishHTML due to plugin compatibility issues
-    // Reports are available in build artifacts
+    // UI test results are published via main publishTestResults stage
+    // Skipping junit here to avoid duplicate processing and stage status issues
     echo "📄 UiPath reports archived to build-artifacts/uipath-reports/"
+    echo "   Test results will be published in 'Publish Test Results to Unify' stage"
 }
 
 def createTestDashboard() {
