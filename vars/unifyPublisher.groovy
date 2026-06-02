@@ -125,23 +125,16 @@ def publishTestResults(Map config = [:]) {
     def testResults = config.testResults ?: 'target/surefire-reports/*.xml'
     def allowEmpty = config.get('allowEmptyResults', true)
 
-    echo "📊 Publishing test results to CloudBees Unify..."
-
-    // Use catchError to prevent test failures from marking the stage/step as unstable
-    // This allows test results to be recorded without affecting pipeline status
-    catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
-        junit(
-            testResults: testResults,
-            allowEmptyResults: allowEmpty,
-            skipPublishingChecks: true,  // Disable GitHub Checks to avoid warnings
-            skipMarkingBuildUnstable: true,  // Prevents UNSTABLE status from test failures
-            healthScaleFactor: 0.0,  // Don't mark build as unstable based on test results
-            keepLongStdio: false,  // Disable long stdio capture to avoid warnings
-            testDataPublishers: []  // Disable extra CloudBees publishers that may generate warnings
-        )
-    }
-
-    echo "✅ Test results published to CloudBees Unify"
+    // When called from post block, junit won't create orange stage indicators
+    // even if there are test failures, because post blocks don't affect stage status
+    junit(
+        testResults: testResults,
+        allowEmptyResults: allowEmpty,
+        skipPublishingChecks: true,  // Disable GitHub Checks to avoid warnings
+        skipMarkingBuildUnstable: false,  // Allow marking build as unstable (not stage)
+        healthScaleFactor: 1.0,  // Normal health reporting
+        keepLongStdio: false
+    )
 }
 
 return this

@@ -688,32 +688,32 @@ EOF
             }
         }
 
-        stage('Publish Test Results to Unify') {
-            when {
-                expression {
-                    env.APP_CODE_CHANGED == 'true'
-                }
-            }
-            steps {
-                container('maven') {
-                    script {
-                        sh """
-                            apt-get update -qq && apt-get install -y -qq xsltproc > /dev/null 2>&1 || true
+    }
 
-                            if [ -f "${ARTIFACTS_DIR}/jmeter-reports/results.jtl" ]; then
-                                TRUE_SUCCESS=\$(grep -c ',true,' ${ARTIFACTS_DIR}/jmeter-reports/results.jtl || echo 0)
-                                TRUE_FAILURE=\$(grep -c ',false,' ${ARTIFACTS_DIR}/jmeter-reports/results.jtl || echo 0)
-                                TOTAL=\$((TRUE_SUCCESS + TRUE_FAILURE))
+    post {
+        always {
+            container('maven') {
+                script {
+                    // Publish test results in post block to avoid marking stages as unstable
+                    echo "📊 Publishing test results to CloudBees Unify (post-build)..."
 
-                                # Calculate success rate using awk (bc not available)
-                                if [ \$TOTAL -gt 0 ]; then
-                                    SUCCESS_RATE=\$(awk "BEGIN {printf \\"%.2f\\", (\$TRUE_SUCCESS * 100) / \$TOTAL}")
-                                else
-                                    SUCCESS_RATE=0
-                                fi
+                    sh """
+                        apt-get update -qq && apt-get install -y -qq xsltproc > /dev/null 2>&1 || true
 
-                                # Convert JMeter results to JUnit XML format for CloudBees Unify
-                                cat > ${ARTIFACTS_DIR}/jmeter-reports/jmeter-junit.xml << JUNITEOF
+                        if [ -f "${ARTIFACTS_DIR}/jmeter-reports/results.jtl" ]; then
+                            TRUE_SUCCESS=\$(grep -c ',true,' ${ARTIFACTS_DIR}/jmeter-reports/results.jtl || echo 0)
+                            TRUE_FAILURE=\$(grep -c ',false,' ${ARTIFACTS_DIR}/jmeter-reports/results.jtl || echo 0)
+                            TOTAL=\$((TRUE_SUCCESS + TRUE_FAILURE))
+
+                            # Calculate success rate using awk (bc not available)
+                            if [ \$TOTAL -gt 0 ]; then
+                                SUCCESS_RATE=\$(awk "BEGIN {printf \\"%.2f\\", (\$TRUE_SUCCESS * 100) / \$TOTAL}")
+                            else
+                                SUCCESS_RATE=0
+                            fi
+
+                            # Convert JMeter results to JUnit XML format for CloudBees Unify
+                            cat > ${ARTIFACTS_DIR}/jmeter-reports/jmeter-junit.xml << JUNITEOF
 <?xml version="1.0" encoding="UTF-8"?>
 <testsuite name="JMeter Performance Tests" tests="\$TOTAL" failures="\$TRUE_FAILURE" time="120" timestamp="\$(date -u +%Y-%m-%dT%H:%M:%S)">
   <properties>
@@ -730,36 +730,30 @@ Success Rate: \${SUCCESS_RATE}%
   </testcase>
 </testsuite>
 JUNITEOF
-                            fi
-                        """
+                        fi
+                    """
 
-                        // Build test results pattern, only including files that exist
-                        def testResultsPattern = 'target/surefire-reports/*.xml'
+                    // Build test results pattern, only including files that exist
+                    def testResultsPattern = 'target/surefire-reports/*.xml'
 
-                        if (fileExists('build-artifacts/api-tests/api-junit.xml')) {
-                            testResultsPattern += ',build-artifacts/api-tests/api-junit.xml'
-                        }
-
-                        if (fileExists('build-artifacts/uipath-reports/uipath-junit.xml')) {
-                            testResultsPattern += ',build-artifacts/uipath-reports/uipath-junit.xml'
-                        } else {
-                            echo "⚠️  UiPath JUnit XML not found - skipping from test results"
-                        }
-
-                        unifyPublisher().publishTestResults(
-                            testResults: testResultsPattern
-                        )
-                        // JMeter results excluded from aggregated reporting
-                        // Performance SLA is already validated in Performance Testing stage
+                    if (fileExists('build-artifacts/api-tests/api-junit.xml')) {
+                        testResultsPattern += ',build-artifacts/api-tests/api-junit.xml'
                     }
-                }
-            }
-        }
-    }
 
-    post {
-        always {
-            container('maven') {
+                    if (fileExists('build-artifacts/uipath-reports/uipath-junit.xml')) {
+                        testResultsPattern += ',build-artifacts/uipath-reports/uipath-junit.xml'
+                    } else {
+                        echo "⚠️  UiPath JUnit XML not found - skipping from test results"
+                    }
+
+                    // Publish test results - in post block, this won't create orange stage indicators
+                    unifyPublisher().publishTestResults(
+                        testResults: testResultsPattern
+                    )
+
+                    echo "✅ Test results published to CloudBees Unify"
+                }
+
                 sh """
                     mkdir -p ${ARTIFACTS_DIR}
                     echo "=== Build Complete ===" >> ${ARTIFACTS_DIR}/build-info.txt
