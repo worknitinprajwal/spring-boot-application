@@ -130,6 +130,7 @@ def publishTestResults(Map config = [:]) {
         testResults: testResults,
         allowEmptyResults: allowEmpty,
         skipPublishingChecks: true,  // Disable GitHub Checks to avoid warnings
+        skipMarkingBuildUnstable: true,  // Prevents UNSTABLE status from test failures
         healthScaleFactor: 0.0,  // Don't mark build as unstable based on test results
         keepLongStdio: false,  // Disable long stdio capture to avoid warnings
         testDataPublishers: []  // Disable extra CloudBees publishers that may generate warnings
