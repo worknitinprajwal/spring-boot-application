@@ -63,14 +63,11 @@ def archiveZAPReports() {
 def archiveUITests() {
     archiveArtifacts artifacts: 'build-artifacts/uipath-reports/**/*', allowEmptyArchive: true
 
-    // Record test results without affecting build status
-    // Use catchError to prevent any test failures from marking stage as unstable
-    catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
-        junit allowEmptyResults: true,
-              testResults: 'build-artifacts/uipath-reports/uipath-junit.xml',
-              skipPublishingChecks: true,
-              healthScaleFactor: 0.0
-    }
+    // Record test results - catchError wrapper is at Jenkinsfile level
+    junit allowEmptyResults: true,
+          testResults: 'build-artifacts/uipath-reports/uipath-junit.xml',
+          skipPublishingChecks: true,
+          healthScaleFactor: 0.0
 
     // Skip publishHTML due to plugin compatibility issues
     // Reports are available in build artifacts

@@ -733,9 +733,11 @@ JUNITEOF
                             fi
                         """
 
-                        unifyPublisher().publishTestResults(
-                            testResults: 'target/surefire-reports/*.xml,build-artifacts/api-tests/api-junit.xml,build-artifacts/uipath-reports/uipath-junit.xml'
-                        )
+                        catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
+                            unifyPublisher().publishTestResults(
+                                testResults: 'target/surefire-reports/*.xml,build-artifacts/api-tests/api-junit.xml,build-artifacts/uipath-reports/uipath-junit.xml'
+                            )
+                        }
                         // JMeter results excluded from aggregated reporting
                         // Performance SLA is already validated in Performance Testing stage
                     }
