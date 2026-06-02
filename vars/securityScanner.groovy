@@ -131,16 +131,15 @@ def publishAikidoToUnify() {
             sh "cp '${env.WORKSPACE}/${aikidoSarifSource}' '${env.WORKSPACE}/${aikidoSarifTarget}'"
             echo "📋 Copied SARIF to workspace root: ${aikidoSarifTarget}"
 
-            // Register SARIF file from workspace root
-            // Using 'Snyk' scanner type as Aikido performs similar SCA+SAST analysis
-            // and 'Aikido' is not in CloudBees Unify's recognized scanner list
+            // Register SARIF file from workspace root using Aikido scanner name
+            // CloudBees Unify may not display custom scanners in UI, but will accept SARIF format
             registerSecurityScan(
                 artifacts: aikidoSarifTarget,
                 format: 'sarif',
-                scanner: 'Snyk',  // Use recognized scanner type for Unify visibility
+                scanner: 'Aikido',  // Use actual scanner name - Snyk mismatch caused filtering
                 archive: true
             )
-            echo "✅ Aikido scan registered as Snyk-compatible SARIF: ${aikidoSarifTarget}"
+            echo "✅ Aikido SARIF scan registered to CloudBees Unify: ${aikidoSarifTarget}"
         } else {
             echo "⚠️  Aikido SARIF file not found at: ${env.WORKSPACE}/${aikidoSarifSource}"
             sh "ls -la '${env.WORKSPACE}/build-artifacts/' || echo 'build-artifacts directory not found'"
