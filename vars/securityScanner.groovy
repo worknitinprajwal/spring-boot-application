@@ -119,51 +119,102 @@ def runAikidoScan() {
 def publishAikidoToUnify() {
     try {
         def aikidoSarifSource = "build-artifacts/aikido-scan.sarif"
-        def aikidoSarifTarget = "aikido-scan.sarif"
 
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "📤 Publishing Aikido Scan to CloudBees Unify"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "🔍 Checking for SARIF at: ${env.WORKSPACE}/${aikidoSarifSource}"
 
-        if (fileExists(aikidoSarifSource)) {
+        if (!fileExists(aikidoSarifSource)) {
+            echo "❌ Aikido SARIF not found at: ${aikidoSarifSource}"
             sh """
-                ls -lh '${env.WORKSPACE}/${aikidoSarifSource}'
+                echo "📂 Listing build-artifacts directory:"
+                ls -la '${env.WORKSPACE}/build-artifacts/' || echo "build-artifacts/ doesn't exist"
+                echo ""
+                echo "📂 Searching for SARIF files:"
+                find '${env.WORKSPACE}' -name '*.sarif' -type f 2>/dev/null || echo "No SARIF files found"
+            """
+            echo "⚠️  Skipping Aikido scan registration - SARIF file not generated"
+            echo "   This likely means the Aikido scan stage failed or was skipped"
+            return
+        }
 
-                # Validate SARIF format using jq
-                echo "🔍 Validating SARIF format..."
-                if command -v jq >/dev/null 2>&1; then
-                    jq empty '${env.WORKSPACE}/${aikidoSarifSource}' && echo "✅ Valid JSON structure" || echo "⚠️  Invalid JSON"
-                    jq -r '.version' '${env.WORKSPACE}/${aikidoSarifSource}' || echo "⚠️  Missing version field"
-                    jq -r '.runs[0].tool.driver.name' '${env.WORKSPACE}/${aikidoSarifSource}' || echo "⚠️  Missing tool.driver.name"
+        sh """
+            echo "✅ Found SARIF file:"
+            ls -lh '${env.WORKSPACE}/${aikidoSarifSource}'
+            echo ""
+
+            # Validate SARIF format using jq
+            echo "🔍 Validating SARIF format..."
+            if command -v jq >/dev/null 2>&1; then
+                if jq empty '${env.WORKSPACE}/${aikidoSarifSource}' 2>/dev/null; then
+                    echo "✅ Valid JSON structure"
                 else
-                    echo "⚠️  jq not available - skipping validation"
+                    echo "❌ Invalid JSON - cannot parse SARIF"
+                    cat '${env.WORKSPACE}/${aikidoSarifSource}'
+                    exit 1
                 fi
 
-                # Copy SARIF to workspace root
-                cp '${env.WORKSPACE}/${aikidoSarifSource}' '${env.WORKSPACE}/${aikidoSarifTarget}'
-            """
-            echo "📋 Copied SARIF to workspace root: ${aikidoSarifTarget}"
+                VERSION=\$(jq -r '.version' '${env.WORKSPACE}/${aikidoSarifSource}' 2>/dev/null || echo "missing")
+                TOOL=\$(jq -r '.runs[0].tool.driver.name' '${env.WORKSPACE}/${aikidoSarifSource}' 2>/dev/null || echo "missing")
+                RESULTS=\$(jq '.runs[0].results | length' '${env.WORKSPACE}/${aikidoSarifSource}' 2>/dev/null || echo "0")
 
-            // NOTE: Aikido is not an officially supported scanner in CloudBees Unify
-            // Registering as 'Snyk' (SCA scanner) to make results visible in Security Center
-            // Aikido performs similar SCA+SAST analysis as Snyk
-            // This is a workaround until Aikido becomes officially supported
+                echo "   SARIF Version: \${VERSION}"
+                echo "   Tool Name: \${TOOL}"
+                echo "   Results Count: \${RESULTS}"
 
-            registerSecurityScan(
-                artifacts: aikidoSarifTarget,
-                format: 'sarif',
-                scanner: 'Snyk',  // Use recognized scanner to display in UI
-                archive: true
-            )
-            echo "✅ Aikido SARIF registered as 'Snyk' scanner for CloudBees Unify visibility"
-            echo "   Note: Aikido results will appear under 'Snyk' in Security Center"
-        } else {
-            echo "⚠️  Aikido SARIF not found: ${aikidoSarifSource}"
-            sh "ls -la '${env.WORKSPACE}/build-artifacts/' || true"
-        }
+                if [ "\${VERSION}" = "missing" ] || [ "\${TOOL}" = "missing" ]; then
+                    echo "❌ Invalid SARIF structure - missing required fields"
+                    exit 1
+                fi
+            else
+                echo "⚠️  jq not available - skipping validation"
+            fi
+        """
+
+        echo ""
+        echo "📤 Registering security scan with CloudBees Unify..."
+        echo "   Format: SARIF"
+        echo "   Scanner: Snyk (Aikido results mapped to Snyk for visibility)"
+        echo "   File: ${aikidoSarifSource}"
+        echo ""
+
+        // NOTE: Aikido is not an officially supported scanner in CloudBees Unify
+        // Registering as 'Snyk' (SCA scanner) to make results visible in Security Center
+        // Aikido performs similar SCA+SAST analysis as Snyk
+        // This is a workaround until Aikido becomes officially supported
+
+        registerSecurityScan(
+            artifacts: aikidoSarifSource,  // Use relative path from workspace
+            format: 'sarif',
+            scanner: 'Snyk',  // Use recognized scanner to display in UI
+            archive: true
+        )
+
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "✅ Aikido scan registered with CloudBees Unify"
+        echo "   Scanner shown as: Snyk"
+        echo "   Results should appear in Security Center"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
     } catch (Exception e) {
-        echo "⚠️  Aikido scan registration failed: ${e.message}"
-        echo "   This may indicate CloudBees Unify plugin is not configured"
-        echo "   Check: Manage Jenkins → Configure System → CloudBees Unify"
-        sh "find '${env.WORKSPACE}/build-artifacts' -name '*.sarif' -name 'aikido*' 2>/dev/null || true"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "❌ Aikido scan registration FAILED"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "Error: ${e.message}"
+        echo "Stack trace:"
+        e.printStackTrace()
+        echo ""
+        echo "Troubleshooting:"
+        echo "1. Check CloudBees Unify plugin is installed:"
+        echo "   Manage Jenkins → Manage Plugins → Installed → 'CloudBees Unify'"
+        echo "2. Check CloudBees Unify configuration:"
+        echo "   Manage Jenkins → Configure System → CloudBees Unify"
+        echo "3. Verify registerSecurityScan is available:"
+        sh "env | grep -i unify || echo 'No UNIFY environment variables found'"
+        echo ""
+        echo "⚠️  Continuing pipeline despite registration failure"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     }
 }
 
