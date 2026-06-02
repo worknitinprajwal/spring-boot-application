@@ -183,36 +183,58 @@ def publishAikidoToUnify() {
         """
 
         echo ""
-        echo "📤 Registering security scan with CloudBees Unify..."
-        echo "   Format: SARIF"
-        echo "   Scanner: Snyk (Aikido results mapped to Snyk for visibility)"
-        echo "   File: ${sarifFileName} (in workspace root)"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "⚠️  IMPORTANT: Aikido CI Gating vs CloudBees Unify Visibility"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        echo "✅ Aikido scan is used for CI/CD pipeline gating (fail/pass builds)"
+        echo "✅ Aikido SARIF is archived as Jenkins artifact for manual review"
+        echo "❌ Aikido results WILL NOT appear in CloudBees Unify Security Center"
+        echo ""
+        echo "Why? CloudBees Unify Security Center only displays:"
+        echo "  • Officially supported scanners (Checkov, Snyk, Trivy, etc.)"
+        echo "  • Scanners that run via implicit security scanning (automatic)"
+        echo "  • Aikido is not officially supported by CloudBees Unify"
+        echo ""
+        echo "Aikido Report Access:"
+        echo "  • Jenkins Build Artifacts: ${env.BUILD_URL}artifact/"
+        echo "  • Direct SARIF: ${env.BUILD_URL}artifact/${sarifFileName}"
+        echo "  • Aikido Dashboard: Check build-artifacts/aikido-scan-details.json for diff_url"
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
 
-        // NOTE: Aikido is not an officially supported scanner in CloudBees Unify
-        // Registering as 'Snyk' (SCA scanner) to make results visible in Security Center
-        // Aikido performs similar SCA+SAST analysis as Snyk
-        // This is a workaround until Aikido becomes officially supported
+        // Archive the SARIF for manual inspection
+        archiveArtifacts artifacts: sarifFileName, allowEmptyArchive: false
+        echo "✅ Aikido SARIF archived as Jenkins artifact"
+        echo "   Access at: ${env.BUILD_URL}artifact/${sarifFileName}"
 
-        registerSecurityScan(
-            artifacts: sarifFileName,  // Must be in workspace root (no subdirectory path)
-            format: 'sarif',
-            scanner: 'Snyk',  // Use recognized scanner to display in UI
-            archive: true
-        )
+        // Add Aikido report link to build description for easy access from Unify
+        try {
+            def aikidoUrl = sh(script: "jq -r '.diff_url // \"\"' '${env.WORKSPACE}/${aikidoSarifSource}'", returnStdout: true).trim()
+            if (aikidoUrl && aikidoUrl != "") {
+                currentBuild.description = (currentBuild.description ?: "") +
+                    "<br/>🛡️ <a href='${aikidoUrl}' target='_blank'>Aikido Security Report</a>" +
+                    "<br/>📄 <a href='${env.BUILD_URL}artifact/${sarifFileName}' target='_blank'>Aikido SARIF</a>"
+                echo "✅ Aikido report link added to build description"
+                echo "   Aikido Dashboard: ${aikidoUrl}"
+            }
+        } catch (Exception e) {
+            echo "⚠️  Could not add Aikido link to build description: ${e.message}"
+        }
 
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "✅ Aikido scan registered with CloudBees Unify"
-        echo "   Scanner shown as: Snyk"
-        echo "   Results should appear in Security Center"
+        echo "✅ Aikido scan completed successfully"
+        echo "   Purpose: CI/CD pipeline gating only"
+        echo "   Status: ${env.BUILD_URL}artifact/ for full results"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        */
 
     } catch (Exception e) {
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "❌ Aikido scan registration FAILED"
+        echo "❌ Aikido scan publishing FAILED"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "Error: ${e.message}"
-        echo "Error class: ${e.class.name}"
         if (e.cause) {
             echo "Caused by: ${e.cause.message}"
         }
