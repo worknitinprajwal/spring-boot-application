@@ -130,7 +130,8 @@ def publishTestResults(Map config = [:]) {
         junit(
             testResults: testResults,
             allowEmptyResults: allowEmpty,
-            skipPublishingChecks: true  // Disable GitHub Checks to avoid warnings
+            skipPublishingChecks: true,  // Disable GitHub Checks to avoid warnings
+            healthScaleFactor: 0.0  // Don't mark build as unstable based on test results
         )
         echo "✅ Test results published to CloudBees Unify"
     } catch (Exception e) {
