@@ -199,7 +199,7 @@ def publishAikidoToUnify() {
         echo "Aikido Report Access:"
         echo "  • Jenkins Build Artifacts: ${env.BUILD_URL}artifact/"
         echo "  • Direct SARIF: ${env.BUILD_URL}artifact/${sarifFileName}"
-        echo "  • Aikido Dashboard: Check build-artifacts/aikido-scan-details.json for diff_url"
+        echo "  • Aikido Dashboard: Check build description for clickable links"
         echo ""
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
@@ -209,26 +209,38 @@ def publishAikidoToUnify() {
         echo "✅ Aikido SARIF archived as Jenkins artifact"
         echo "   Access at: ${env.BUILD_URL}artifact/${sarifFileName}"
 
-        // Add Aikido report link to build description for easy access from Unify
+        // Add Aikido report links to build description for easy access from Unify
         try {
-            def aikidoUrl = sh(script: "jq -r '.diff_url // \"\"' '${env.WORKSPACE}/${aikidoSarifSource}'", returnStdout: true).trim()
+            // Extract Aikido dashboard URL from scan details
+            def aikidoUrl = sh(
+                script: "jq -r '.diff_url // \"\"' '${env.WORKSPACE}/build-artifacts/aikido-scan-details.json' 2>/dev/null || echo ''",
+                returnStdout: true
+            ).trim()
+
+            def buildDescription = currentBuild.description ?: ""
+
+            // Add Jenkins artifact URL (visible in CloudBees Unify)
+            buildDescription += "<br/>📄 <a href='${env.BUILD_URL}artifact/${sarifFileName}' target='_blank'>Aikido SARIF Report</a>"
+
+            // Add Aikido dashboard URL if available
             if (aikidoUrl && aikidoUrl != "") {
-                currentBuild.description = (currentBuild.description ?: "") +
-                    "<br/>🛡️ <a href='${aikidoUrl}' target='_blank'>Aikido Security Report</a>" +
-                    "<br/>📄 <a href='${env.BUILD_URL}artifact/${sarifFileName}' target='_blank'>Aikido SARIF</a>"
-                echo "✅ Aikido report link added to build description"
-                echo "   Aikido Dashboard: ${aikidoUrl}"
+                buildDescription += "<br/>🛡️ <a href='${aikidoUrl}' target='_blank'>Aikido Security Dashboard</a>"
+                echo "✅ Aikido Dashboard URL: ${aikidoUrl}"
             }
+
+            currentBuild.description = buildDescription
+            echo "✅ Aikido report links added to build description"
+            echo "   (Visible in CloudBees Unify run details)"
         } catch (Exception e) {
-            echo "⚠️  Could not add Aikido link to build description: ${e.message}"
+            echo "⚠️  Could not add Aikido links to build description: ${e.message}"
         }
 
+        echo ""
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "✅ Aikido scan completed successfully"
         echo "   Purpose: CI/CD pipeline gating only"
-        echo "   Status: ${env.BUILD_URL}artifact/ for full results"
+        echo "   Jenkins Artifact: ${env.BUILD_URL}artifact/${sarifFileName}"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        */
 
     } catch (Exception e) {
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
