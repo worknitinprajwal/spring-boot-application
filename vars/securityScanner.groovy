@@ -172,11 +172,21 @@ def publishAikidoToUnify() {
             fi
         """
 
+        // CloudBees Unify registerSecurityScan expects the file in workspace root
+        // Copy SARIF from build-artifacts to workspace root
+        def sarifFileName = "aikido-scan.sarif"
+        sh """
+            echo ""
+            echo "📋 Copying SARIF to workspace root for CloudBees Unify..."
+            cp '${env.WORKSPACE}/${aikidoSarifSource}' '${env.WORKSPACE}/${sarifFileName}'
+            ls -lh '${env.WORKSPACE}/${sarifFileName}'
+        """
+
         echo ""
         echo "📤 Registering security scan with CloudBees Unify..."
         echo "   Format: SARIF"
         echo "   Scanner: Snyk (Aikido results mapped to Snyk for visibility)"
-        echo "   File: ${aikidoSarifSource}"
+        echo "   File: ${sarifFileName} (in workspace root)"
         echo ""
 
         // NOTE: Aikido is not an officially supported scanner in CloudBees Unify
@@ -185,7 +195,7 @@ def publishAikidoToUnify() {
         // This is a workaround until Aikido becomes officially supported
 
         registerSecurityScan(
-            artifacts: aikidoSarifSource,  // Use relative path from workspace
+            artifacts: sarifFileName,  // Must be in workspace root (no subdirectory path)
             format: 'sarif',
             scanner: 'Snyk',  // Use recognized scanner to display in UI
             archive: true
@@ -202,16 +212,25 @@ def publishAikidoToUnify() {
         echo "❌ Aikido scan registration FAILED"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "Error: ${e.message}"
-        echo "Stack trace:"
-        e.printStackTrace()
+        echo "Error class: ${e.class.name}"
+        if (e.cause) {
+            echo "Caused by: ${e.cause.message}"
+        }
         echo ""
         echo "Troubleshooting:"
         echo "1. Check CloudBees Unify plugin is installed:"
         echo "   Manage Jenkins → Manage Plugins → Installed → 'CloudBees Unify'"
         echo "2. Check CloudBees Unify configuration:"
         echo "   Manage Jenkins → Configure System → CloudBees Unify"
-        echo "3. Verify registerSecurityScan is available:"
-        sh "env | grep -i unify || echo 'No UNIFY environment variables found'"
+        echo "3. Verify file exists in workspace root:"
+        sh """
+            ls -la '${env.WORKSPACE}/' | grep -E '\\.sarif\$' || echo 'No SARIF files in workspace root'
+            echo ""
+            echo "SARIF file content preview:"
+            if [ -f '${env.WORKSPACE}/aikido-scan.sarif' ]; then
+                head -50 '${env.WORKSPACE}/aikido-scan.sarif'
+            fi
+        """
         echo ""
         echo "⚠️  Continuing pipeline despite registration failure"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
