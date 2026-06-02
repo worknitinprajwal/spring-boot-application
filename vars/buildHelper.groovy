@@ -111,12 +111,11 @@ def archiveBuildArtifacts() {
 
         // Register JAR artifact in CloudBees Unify
         try {
-            def jarFiles = findFiles(glob: 'target/*.jar')
-            if (jarFiles.length > 0) {
-                def jarFile = jarFiles[0]
-                def jarName = jarFile.name
-                def jarPath = jarFile.path
+            // Get JAR filename using shell command
+            def jarName = sh(script: "ls target/*.jar | head -1 | xargs basename", returnStdout: true).trim()
+            def jarPath = "target/${jarName}"
 
+            if (jarName) {
                 echo "📦 Registering JAR artifact in CloudBees Unify: ${jarName}"
 
                 def jarArtifactId = registerBuildArtifactMetadata(
@@ -129,6 +128,8 @@ def archiveBuildArtifacts() {
 
                 echo "✅ JAR artifact registered in Unify (ID: ${jarArtifactId})"
                 env.JAR_ARTIFACT_ID = jarArtifactId
+            } else {
+                echo "⚠️  No JAR file found to register"
             }
         } catch (Exception e) {
             echo "⚠️  Failed to register JAR artifact in Unify: ${e.message}"
