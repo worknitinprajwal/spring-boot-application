@@ -63,12 +63,13 @@ def archiveZAPReports() {
 def archiveUITests() {
     archiveArtifacts artifacts: 'build-artifacts/uipath-reports/**/*', allowEmptyArchive: true
 
-    // Disable GitHub Checks publishing and prevent marking build as unstable
-    // Test results are published to CloudBees Unify instead
-    try {
-        junit allowEmptyResults: true, testResults: 'build-artifacts/uipath-reports/uipath-junit.xml', skipPublishingChecks: true, healthScaleFactor: 0.0
-    } catch (Exception e) {
-        echo "⚠️  JUnit archiving completed with warnings (non-blocking)"
+    // Record test results without affecting build status
+    // Use catchError to prevent any test failures from marking stage as unstable
+    catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
+        junit allowEmptyResults: true,
+              testResults: 'build-artifacts/uipath-reports/uipath-junit.xml',
+              skipPublishingChecks: true,
+              healthScaleFactor: 0.0
     }
 
     // Skip publishHTML due to plugin compatibility issues
