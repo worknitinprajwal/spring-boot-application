@@ -733,8 +733,21 @@ JUNITEOF
                             fi
                         """
 
+                        // Build test results pattern, only including files that exist
+                        def testResultsPattern = 'target/surefire-reports/*.xml'
+
+                        if (fileExists('build-artifacts/api-tests/api-junit.xml')) {
+                            testResultsPattern += ',build-artifacts/api-tests/api-junit.xml'
+                        }
+
+                        if (fileExists('build-artifacts/uipath-reports/uipath-junit.xml')) {
+                            testResultsPattern += ',build-artifacts/uipath-reports/uipath-junit.xml'
+                        } else {
+                            echo "⚠️  UiPath JUnit XML not found - skipping from test results"
+                        }
+
                         unifyPublisher().publishTestResults(
-                            testResults: 'target/surefire-reports/*.xml,build-artifacts/api-tests/api-junit.xml,build-artifacts/uipath-reports/uipath-junit.xml'
+                            testResults: testResultsPattern
                         )
                         // JMeter results excluded from aggregated reporting
                         // Performance SLA is already validated in Performance Testing stage
