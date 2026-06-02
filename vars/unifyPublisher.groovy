@@ -126,15 +126,21 @@ def publishTestResults(Map config = [:]) {
     def allowEmpty = config.get('allowEmptyResults', true)
 
     echo "📊 Publishing test results to CloudBees Unify..."
-    junit(
-        testResults: testResults,
-        allowEmptyResults: allowEmpty,
-        skipPublishingChecks: true,  // Disable GitHub Checks to avoid warnings
-        skipMarkingBuildUnstable: true,  // Prevents UNSTABLE status from test failures
-        healthScaleFactor: 0.0,  // Don't mark build as unstable based on test results
-        keepLongStdio: false,  // Disable long stdio capture to avoid warnings
-        testDataPublishers: []  // Disable extra CloudBees publishers that may generate warnings
-    )
+
+    // Use catchError to prevent test failures from marking the stage/step as unstable
+    // This allows test results to be recorded without affecting pipeline status
+    catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
+        junit(
+            testResults: testResults,
+            allowEmptyResults: allowEmpty,
+            skipPublishingChecks: true,  // Disable GitHub Checks to avoid warnings
+            skipMarkingBuildUnstable: true,  // Prevents UNSTABLE status from test failures
+            healthScaleFactor: 0.0,  // Don't mark build as unstable based on test results
+            keepLongStdio: false,  // Disable long stdio capture to avoid warnings
+            testDataPublishers: []  // Disable extra CloudBees publishers that may generate warnings
+        )
+    }
+
     echo "✅ Test results published to CloudBees Unify"
 }
 
