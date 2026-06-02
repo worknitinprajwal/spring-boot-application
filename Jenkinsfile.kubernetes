@@ -183,8 +183,7 @@ spec:
                                 // SARIF conversion happens in runAikidoScan()
                                 // Archive supporting files (registerSecurityScan will archive the SARIF)
                                 archiveArtifacts artifacts: 'build-artifacts/aikido-scan*.txt, build-artifacts/aikido-scan*.json', allowEmptyArchive: true
-                                // registerSecurityScan with archive:true will handle SARIF archiving
-                                securityScanner().publishAikidoToUnify()
+                                // registerSecurityScan is now called in dedicated "Publish Aikido to Unify" stage
                             } catch (Exception e) {
                                 echo "⚠️ Aikido post-processing failed: ${e.message}"
                             }
@@ -197,7 +196,9 @@ spec:
         stage('Publish Aikido to Unify') {
             steps {
                 container('maven') {
-                    echo "✅ Aikido scan results available in CloudBees Unify Security Insights"
+                    script {
+                        securityScanner().publishAikidoToUnify()
+                    }
                 }
             }
         }
