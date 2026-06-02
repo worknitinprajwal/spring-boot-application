@@ -125,18 +125,16 @@ def publishTestResults(Map config = [:]) {
     def testResults = config.testResults ?: 'target/surefire-reports/*.xml'
     def allowEmpty = config.get('allowEmptyResults', true)
 
-    try {
-        echo "📊 Publishing test results to CloudBees Unify..."
-        junit(
-            testResults: testResults,
-            allowEmptyResults: allowEmpty,
-            skipPublishingChecks: true,  // Disable GitHub Checks to avoid warnings
-            healthScaleFactor: 0.0  // Don't mark build as unstable based on test results
-        )
-        echo "✅ Test results published to CloudBees Unify"
-    } catch (Exception e) {
-        echo "⚠️  Failed to publish test results: ${e.message}"
-    }
+    echo "📊 Publishing test results to CloudBees Unify..."
+    junit(
+        testResults: testResults,
+        allowEmptyResults: allowEmpty,
+        skipPublishingChecks: true,  // Disable GitHub Checks to avoid warnings
+        healthScaleFactor: 0.0,  // Don't mark build as unstable based on test results
+        keepLongStdio: false,  // Disable long stdio capture to avoid warnings
+        testDataPublishers: []  // Disable extra CloudBees publishers that may generate warnings
+    )
+    echo "✅ Test results published to CloudBees Unify"
 }
 
 return this
