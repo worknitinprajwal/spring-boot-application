@@ -616,10 +616,8 @@ EOF
                     post {
                         always {
                             script {
-                                try {
+                                catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
                                     testReporter().archiveUITests()
-                                } catch (Exception e) {
-                                    echo "⚠️  Error in UI test archiving: ${e.class.name}: ${e.message}"
                                 }
                             }
                         }
