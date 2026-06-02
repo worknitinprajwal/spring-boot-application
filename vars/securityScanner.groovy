@@ -119,35 +119,52 @@ def runAikidoScan() {
 def publishAikidoToUnify() {
     try {
         def aikidoSarifSource = "build-artifacts/aikido-scan.sarif"
-        def aikidoSarifTarget = "aikido-scan.sarif"  // Copy to workspace root
+        def aikidoSarifTarget = "aikido-scan.sarif"
 
         echo "🔍 Checking for SARIF at: ${env.WORKSPACE}/${aikidoSarifSource}"
 
-        // Verify source file exists
         if (fileExists(aikidoSarifSource)) {
-            sh "ls -lh '${env.WORKSPACE}/${aikidoSarifSource}'"
+            sh """
+                ls -lh '${env.WORKSPACE}/${aikidoSarifSource}'
 
-            // Copy SARIF to workspace root - registerSecurityScan expects files at workspace root
-            sh "cp '${env.WORKSPACE}/${aikidoSarifSource}' '${env.WORKSPACE}/${aikidoSarifTarget}'"
+                # Validate SARIF format using jq
+                echo "🔍 Validating SARIF format..."
+                if command -v jq >/dev/null 2>&1; then
+                    jq empty '${env.WORKSPACE}/${aikidoSarifSource}' && echo "✅ Valid JSON structure" || echo "⚠️  Invalid JSON"
+                    jq -r '.version' '${env.WORKSPACE}/${aikidoSarifSource}' || echo "⚠️  Missing version field"
+                    jq -r '.runs[0].tool.driver.name' '${env.WORKSPACE}/${aikidoSarifSource}' || echo "⚠️  Missing tool.driver.name"
+                else
+                    echo "⚠️  jq not available - skipping validation"
+                fi
+
+                # Copy SARIF to workspace root
+                cp '${env.WORKSPACE}/${aikidoSarifSource}' '${env.WORKSPACE}/${aikidoSarifTarget}'
+            """
             echo "📋 Copied SARIF to workspace root: ${aikidoSarifTarget}"
 
-            // Register SARIF file from workspace root using Aikido scanner name
-            // CloudBees Unify may not display custom scanners in UI, but will accept SARIF format
+            // NOTE: Aikido is not an officially supported scanner in CloudBees Unify
+            // Results may not appear in Security Center UI even if registration succeeds
+            // Known issue: CloudBees Unify plugin 404 errors indicate configuration needed
+            // See: Manage Jenkins → Configure System → CloudBees Unify section
+
             registerSecurityScan(
                 artifacts: aikidoSarifTarget,
                 format: 'sarif',
-                scanner: 'Aikido',  // Use actual scanner name - Snyk mismatch caused filtering
+                scanner: 'Aikido',
                 archive: true
             )
-            echo "✅ Aikido SARIF scan registered to CloudBees Unify: ${aikidoSarifTarget}"
+            echo "✅ Aikido SARIF registered (scanner may not be visible in Unify Security Center)"
+            echo "   Note: Only officially supported scanners display in Security Center UI"
+            echo "   Aikido results are stored but may require Unify plugin configuration"
         } else {
-            echo "⚠️  Aikido SARIF file not found at: ${env.WORKSPACE}/${aikidoSarifSource}"
-            sh "ls -la '${env.WORKSPACE}/build-artifacts/' || echo 'build-artifacts directory not found'"
+            echo "⚠️  Aikido SARIF not found: ${aikidoSarifSource}"
+            sh "ls -la '${env.WORKSPACE}/build-artifacts/' || true"
         }
     } catch (Exception e) {
-        echo "⚠️  Failed to register Aikido scan: ${e.message}"
-        // Show what files are available
-        sh "find '${env.WORKSPACE}/build-artifacts' -name '*.sarif' -o -name 'aikido*' || true"
+        echo "⚠️  Aikido scan registration failed: ${e.message}"
+        echo "   This may indicate CloudBees Unify plugin is not configured"
+        echo "   Check: Manage Jenkins → Configure System → CloudBees Unify"
+        sh "find '${env.WORKSPACE}/build-artifacts' -name '*.sarif' -name 'aikido*' 2>/dev/null || true"
     }
 }
 

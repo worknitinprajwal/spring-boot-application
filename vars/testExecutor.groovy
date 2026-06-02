@@ -181,19 +181,19 @@ SUMMARYEOF
 def runUITests() {
     container('uipath') {
         sh script: """
-            set -e
+            set +e  # Don't exit on error - we want to generate JUnit XML even if tests fail
 
             mkdir -p \${ARTIFACTS_DIR}/uipath-reports
             pip3 install --quiet requests pytest pytest-html > /dev/null 2>&1
 
             # Use unquoted heredoc to allow variable expansion
-            cat > /tmp/ui_test.py << PYTEST_EOF
+            cat > /tmp/ui_test.py << 'PYTEST_EOF'
 import requests
 import pytest
 import os
 import time
 
-BASE_URL = "\${HEALTH_CHECK_URL}"
+BASE_URL = os.environ.get('HEALTH_CHECK_URL', 'http://localhost:8080')
 
 class TestUIAutomation:
     def test_health_endpoint(self):
@@ -239,23 +239,39 @@ class TestUIAutomation:
 PYTEST_EOF
 
             # Create pytest.ini for proper JUnit XML configuration
-            cat > /tmp/pytest.ini << PYTESTINIEOF
+            cat > /tmp/pytest.ini << 'PYTESTINIEOF'
 [pytest]
 junit_suite_name = UI Automation Tests
 junit_family = xunit2
 PYTESTINIEOF
 
+            # Export HEALTH_CHECK_URL for pytest to access
+            export HEALTH_CHECK_URL="\${HEALTH_CHECK_URL}"
+
             cd /tmp
+            # Run pytest - capture exit code but don't fail script
             pytest ui_test.py -v \\
                 --junitxml=\${ARTIFACTS_DIR}/uipath-reports/uipath-junit.xml \\
                 --html=\${ARTIFACTS_DIR}/uipath-reports/uipath-report.html \\
                 --self-contained-html
 
-            # Add test type property to JUnit XML for CloudBees Unify
+            PYTEST_EXIT=\$?
+            echo "Pytest exit code: \${PYTEST_EXIT}"
+
+            # Verify JUnit XML was created
             if [ -f "\${ARTIFACTS_DIR}/uipath-reports/uipath-junit.xml" ]; then
+                echo "✅ UiPath JUnit XML created: \${ARTIFACTS_DIR}/uipath-reports/uipath-junit.xml"
+                ls -lh "\${ARTIFACTS_DIR}/uipath-reports/uipath-junit.xml"
+
+                # Add test type property to JUnit XML for CloudBees Unify (skip on sed failure)
                 sed -i '/<testsuite/a\\  <properties>\\n    <property name="test.type" value="UI"/>\\n    <property name="framework" value="pytest"/>\\n  </properties>' \\
-                    \${ARTIFACTS_DIR}/uipath-reports/uipath-junit.xml
+                    "\${ARTIFACTS_DIR}/uipath-reports/uipath-junit.xml" || echo "⚠️  sed failed but continuing"
+            else
+                echo "❌ UiPath JUnit XML NOT created - check pytest output above"
             fi
+
+            # Return pytest exit code
+            exit \${PYTEST_EXIT}
         """, returnStdout: false
     }
 }
