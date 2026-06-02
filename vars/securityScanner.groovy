@@ -143,19 +143,18 @@ def publishAikidoToUnify() {
             echo "📋 Copied SARIF to workspace root: ${aikidoSarifTarget}"
 
             // NOTE: Aikido is not an officially supported scanner in CloudBees Unify
-            // Results may not appear in Security Center UI even if registration succeeds
-            // Known issue: CloudBees Unify plugin 404 errors indicate configuration needed
-            // See: Manage Jenkins → Configure System → CloudBees Unify section
+            // Registering as 'Snyk' (SCA scanner) to make results visible in Security Center
+            // Aikido performs similar SCA+SAST analysis as Snyk
+            // This is a workaround until Aikido becomes officially supported
 
             registerSecurityScan(
                 artifacts: aikidoSarifTarget,
                 format: 'sarif',
-                scanner: 'Aikido',
+                scanner: 'Snyk',  // Use recognized scanner to display in UI
                 archive: true
             )
-            echo "✅ Aikido SARIF registered (scanner may not be visible in Unify Security Center)"
-            echo "   Note: Only officially supported scanners display in Security Center UI"
-            echo "   Aikido results are stored but may require Unify plugin configuration"
+            echo "✅ Aikido SARIF registered as 'Snyk' scanner for CloudBees Unify visibility"
+            echo "   Note: Aikido results will appear under 'Snyk' in Security Center"
         } else {
             echo "⚠️  Aikido SARIF not found: ${aikidoSarifSource}"
             sh "ls -la '${env.WORKSPACE}/build-artifacts/' || true"
