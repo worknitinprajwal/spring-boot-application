@@ -204,10 +204,35 @@ def publishAikidoToUnify() {
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
 
-        // Archive the SARIF for manual inspection
+        // Archive BOTH SARIF and JSON formats for testing
         archiveArtifacts artifacts: sarifFileName, allowEmptyArchive: false
         echo "✅ Aikido SARIF archived as Jenkins artifact"
         echo "   Access at: ${env.BUILD_URL}artifact/${sarifFileName}"
+
+        // Also archive the raw JSON from Aikido
+        def aikidoJsonSource = "build-artifacts/aikido-scan-details.json"
+        if (fileExists(aikidoJsonSource)) {
+            def aikidoJsonName = "aikido-scan.json"
+            sh "cp '${env.WORKSPACE}/${aikidoJsonSource}' '${env.WORKSPACE}/${aikidoJsonName}'"
+            archiveArtifacts artifacts: aikidoJsonName, allowEmptyArchive: false
+            echo "✅ Aikido JSON archived as Jenkins artifact"
+            echo "   Access at: ${env.BUILD_URL}artifact/${aikidoJsonName}"
+
+            // TEST: Try registering with JSON format to see if CloudBees Unify displays it
+            echo ""
+            echo "🧪 EXPERIMENT: Registering Aikido scan with JSON format..."
+            try {
+                registerSecurityScan(
+                    artifacts: aikidoJsonName,
+                    format: 'json',
+                    scanner: 'Aikido',
+                    archive: true
+                )
+                echo "✅ Aikido JSON registered (testing if this appears in Security Center)"
+            } catch (Exception jsonError) {
+                echo "⚠️  JSON format registration failed: ${jsonError.message}"
+            }
+        }
 
         // Add Aikido report links to build description for easy access from Unify
         try {
@@ -219,8 +244,9 @@ def publishAikidoToUnify() {
 
             def buildDescription = currentBuild.description ?: ""
 
-            // Add Jenkins artifact URL (visible in CloudBees Unify)
+            // Add Jenkins artifact URLs (visible in CloudBees Unify)
             buildDescription += "<br/>📄 <a href='${env.BUILD_URL}artifact/${sarifFileName}' target='_blank'>Aikido SARIF Report</a>"
+            buildDescription += "<br/>📊 <a href='${env.BUILD_URL}artifact/aikido-scan.json' target='_blank'>Aikido JSON Report</a>"
 
             // Add Aikido dashboard URL if available
             if (aikidoUrl && aikidoUrl != "") {
