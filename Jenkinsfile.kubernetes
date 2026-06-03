@@ -743,22 +743,30 @@ JUNITEOF
                             echo "⚠️  UiPath JUnit XML not found - skipping from test results"
                         }
 
-                        // Store current build result before junit
-                        def previousResult = currentBuild.result
+                        // Publish test results with error handling
+                        try {
+                            // Store current build result before junit (handle null properly)
+                            def previousResult = currentBuild.result ?: 'SUCCESS'
 
-                        // Publish test results
-                        unifyPublisher().publishTestResults(
-                            testResults: testResultsPattern
-                        )
+                            // Publish test results
+                            unifyPublisher().publishTestResults(
+                                testResults: testResultsPattern
+                            )
 
-                        // Restore build result if junit changed it
-                        // This allows test results to be recorded without failing the build
-                        if (previousResult == null && currentBuild.result == 'UNSTABLE') {
-                            currentBuild.result = null
-                            echo "ℹ️  Reset build result from UNSTABLE (tests published successfully)"
+                            // Restore build result if junit changed it to UNSTABLE
+                            // This allows test results to be recorded without failing the build
+                            def newResult = currentBuild.result ?: 'SUCCESS'
+                            if (previousResult == 'SUCCESS' && newResult == 'UNSTABLE') {
+                                currentBuild.result = 'SUCCESS'
+                                echo "ℹ️  Reset build result from UNSTABLE to SUCCESS (tests published successfully)"
+                            }
+
+                            echo "✅ Test results published to CloudBees Unify"
+                        } catch (Exception e) {
+                            echo "⚠️  Error publishing test results: ${e.message}"
+                            // Don't fail the build if test publishing fails
+                            echo "⚠️  Continuing pipeline despite test publishing error"
                         }
-
-                        echo "✅ Test results published to CloudBees Unify"
                     }
                 }
             }
