@@ -691,29 +691,24 @@ EOF
         stage('Publish Test Results to Unify') {
             steps {
                 script {
-                    // Use catchError to prevent stage from being marked as unstable
-                    // even if junit marks build as unstable
-                    catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS', message: 'Test results published') {
-                        container('maven') {
-                            echo "📊 Publishing test results to CloudBees Unify..."
+                    container('maven') {
+                        echo "📊 Preparing test results for CloudBees Unify..."
 
-                            sh """
-                                apt-get update -qq && apt-get install -y -qq xsltproc > /dev/null 2>&1 || true
+                        sh """
+                            apt-get update -qq && apt-get install -y -qq xsltproc > /dev/null 2>&1 || true
 
-                                if [ -f "${ARTIFACTS_DIR}/jmeter-reports/results.jtl" ]; then
-                                    TRUE_SUCCESS=\$(grep -c ',true,' ${ARTIFACTS_DIR}/jmeter-reports/results.jtl || echo 0)
-                                    TRUE_FAILURE=\$(grep -c ',false,' ${ARTIFACTS_DIR}/jmeter-reports/results.jtl || echo 0)
-                                    TOTAL=\$((TRUE_SUCCESS + TRUE_FAILURE))
+                            if [ -f "${ARTIFACTS_DIR}/jmeter-reports/results.jtl" ]; then
+                                TRUE_SUCCESS=\$(grep -c ',true,' ${ARTIFACTS_DIR}/jmeter-reports/results.jtl || echo 0)
+                                TRUE_FAILURE=\$(grep -c ',false,' ${ARTIFACTS_DIR}/jmeter-reports/results.jtl || echo 0)
+                                TOTAL=\$((TRUE_SUCCESS + TRUE_FAILURE))
 
-                                    # Calculate success rate using awk (bc not available)
-                                    if [ \$TOTAL -gt 0 ]; then
-                                        SUCCESS_RATE=\$(awk "BEGIN {printf \\"%.2f\\", (\$TRUE_SUCCESS * 100) / \$TOTAL}")
-                                    else
-                                        SUCCESS_RATE=0
-                                    fi
+                                if [ \$TOTAL -gt 0 ]; then
+                                    SUCCESS_RATE=\$(awk "BEGIN {printf \\"%.2f\\", (\$TRUE_SUCCESS * 100) / \$TOTAL}")
+                                else
+                                    SUCCESS_RATE=0
+                                fi
 
-                                    # Convert JMeter results to JUnit XML format for CloudBees Unify
-                                    cat > ${ARTIFACTS_DIR}/jmeter-reports/jmeter-junit.xml << JUNITEOF
+                                cat > ${ARTIFACTS_DIR}/jmeter-reports/jmeter-junit.xml << JUNITEOF
 <?xml version="1.0" encoding="UTF-8"?>
 <testsuite name="JMeter Performance Tests" tests="\$TOTAL" failures="\$TRUE_FAILURE" time="120" timestamp="\$(date -u +%Y-%m-%dT%H:%M:%S)">
   <properties>
@@ -730,29 +725,22 @@ Success Rate: \${SUCCESS_RATE}%
   </testcase>
 </testsuite>
 JUNITEOF
-                                fi
-                            """
+                            fi
+                        """
 
-                            // Build test results pattern, only including files that exist
-                            def testResultsPattern = 'target/surefire-reports/*.xml'
-
-                            if (fileExists('build-artifacts/api-tests/api-junit.xml')) {
-                                testResultsPattern += ',build-artifacts/api-tests/api-junit.xml'
-                            }
-
-                            if (fileExists('build-artifacts/uipath-reports/uipath-junit.xml')) {
-                                testResultsPattern += ',build-artifacts/uipath-reports/uipath-junit.xml'
-                            } else {
-                                echo "⚠️  UiPath JUnit XML not found - skipping from test results"
-                            }
-
-                            // Publish test results - catchError wrapper prevents stage from going orange
-                            unifyPublisher().publishTestResults(
-                                testResults: testResultsPattern
-                            )
-
-                            echo "✅ Test results published to CloudBees Unify"
+                        // Store the test pattern in an env var so post block can use it
+                        def testResultsPattern = 'target/surefire-reports/*.xml'
+                        if (fileExists('build-artifacts/api-tests/api-junit.xml')) {
+                            testResultsPattern += ',build-artifacts/api-tests/api-junit.xml'
                         }
+                        if (fileExists('build-artifacts/uipath-reports/uipath-junit.xml')) {
+                            testResultsPattern += ',build-artifacts/uipath-reports/uipath-junit.xml'
+                        }
+                        if (fileExists("${ARTIFACTS_DIR}/jmeter-reports/jmeter-junit.xml")) {
+                            testResultsPattern += ",${ARTIFACTS_DIR}/jmeter-reports/jmeter-junit.xml"
+                        }
+                        env.TEST_RESULTS_PATTERN = testResultsPattern
+                        echo "✅ Test results prepared — will be published in post block"
                     }
                 }
             }
@@ -766,6 +754,22 @@ JUNITEOF
                     mkdir -p ${ARTIFACTS_DIR}
                     echo "=== Build Complete ===" >> ${ARTIFACTS_DIR}/build-info.txt
                 """
+            }
+            script {
+                // junit must run in post block — calling it inside a stage marks that stage UNSTABLE
+                // post blocks have no stage node, so there is no orange indicator regardless of failures
+                def pattern = env.TEST_RESULTS_PATTERN ?: 'target/surefire-reports/*.xml'
+                try {
+                    junit(
+                        testResults: pattern,
+                        allowEmptyResults: true,
+                        skipPublishingChecks: true,
+                        skipMarkingBuildUnstable: true
+                    )
+                    echo "✅ Test results published to CloudBees Unify"
+                } catch (Exception e) {
+                    echo "⚠️  Test results publish failed: ${e.message}"
+                }
             }
         }
         success {

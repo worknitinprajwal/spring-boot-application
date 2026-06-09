@@ -124,16 +124,13 @@ def publishDeployment(Map config = [:]) {
 def publishTestResults(Map config = [:]) {
     def testResults = config.testResults ?: 'target/surefire-reports/*.xml'
     def allowEmpty = config.get('allowEmptyResults', true)
+    def skipUnstable = config.get('skipMarkingBuildUnstable', true)
 
-    // When called from post block, junit won't create orange stage indicators
-    // even if there are test failures, because post blocks don't affect stage status
     junit(
         testResults: testResults,
         allowEmptyResults: allowEmpty,
-        skipPublishingChecks: true,  // Disable GitHub Checks to avoid warnings
-        skipMarkingBuildUnstable: false,  // Allow marking build as unstable (not stage)
-        healthScaleFactor: 1.0,  // Normal health reporting
-        keepLongStdio: false
+        skipPublishingChecks: true,
+        skipMarkingBuildUnstable: skipUnstable
     )
 }
 
