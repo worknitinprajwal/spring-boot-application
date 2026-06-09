@@ -358,7 +358,7 @@ EOF
                 container('maven') {
                     script {
                         def appNamespace = env.BRANCH_NAME == 'develop' ? 'dev' : 'test'
-                        def clusterIp = env.BRANCH_NAME == 'develop' ? '172.18.0.5' : '172.18.0.8'
+                        def clusterIp = env.BRANCH_NAME == 'develop' ? '172.18.0.7' : '172.18.0.5'
                         def targetServer = "https://${clusterIp}:6443"
                         def ingressHost = env.BRANCH_NAME == 'develop' ? 'fitness-tracker-dev.local' : 'fitness-tracker-test.local'
                         def ingressPort = env.BRANCH_NAME == 'develop' ? '8081' : '8082'
