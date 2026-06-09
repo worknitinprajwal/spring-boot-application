@@ -19,7 +19,7 @@ spec:
         - ../overlays/dev/values-dev.yaml
 
   destination:
-    server: https://172.18.0.5:6443  # dev-cluster (updated May 15)
+    server: https://172.18.0.4:6443  # dev-cluster (fixed IP - May 19)
     namespace: dev
 
   syncPolicy:

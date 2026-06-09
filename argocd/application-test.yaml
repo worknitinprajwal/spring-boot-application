@@ -19,7 +19,7 @@ spec:
         - ../overlays/test/values-test.yaml
 
   destination:
-    server: https://172.18.0.8:6443  # test-cluster
+    server: https://172.18.0.6:6443  # test-cluster (fixed IP - May 19)
     namespace: test
 
   syncPolicy:
