@@ -1,0 +1,49 @@
+name: Terraform Apply - Create Infrastructure
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'terraform/**'
+      - '.github/workflows/terraform-apply.yml'
+
+env:
+  TF_VAR_cluster_name: fitness-tracker
+  TF_VAR_image_repository: worknitinprajwal/fitness-tracker
+
+jobs:
+  terraform-apply:
+    runs-on: self-hosted
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify required tools
+        run: |
+          echo "kind: $(kind version)"
+          echo "helm: $(helm version --short)"
+          echo "terraform: $(terraform version | head -1)"
+          echo "kubectl: $(kubectl version --client)"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Plan
+        run: terraform plan -out=tfplan
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve tfplan
+
+      - name: Get ArgoCD Password
+        run: |
+          echo "ArgoCD URL: http://localhost:30001"
+          echo "Retrieving admin password..."
+          kubectl -n argocd get secret argocd-initial-admin-secret \
+            -o jsonpath="{.data.password}" 2>/dev/null | base64 -d || echo "Secret not yet available"

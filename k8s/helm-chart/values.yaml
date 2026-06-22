@@ -1,25 +1,17 @@
-replicaCount: 4
+replicaCount: 2
 
 image:
-  repository: anuddeeph2/fitness-tracker
-  tag: main-23
+  repository: worknitinprajwal/fitness-tracker
+  tag: latest
   pullPolicy: Always
 
 service:
   type: NodePort
   port: 8080
-  nodePort: 30080
+  nodePort: 30000
 
 ingress:
-  enabled: true
-  className: nginx
-  annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-  hosts:
-    - host: fitness-tracker.local
-      paths:
-        - path: /
-          pathType: Prefix
+  enabled: false
 
 resources:
   limits:

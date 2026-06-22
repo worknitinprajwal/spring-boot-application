@@ -1,0 +1,48 @@
+name: Terraform Destroy - Remove Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_destroy:
+        description: 'Type "yes" to confirm destruction of all infrastructure'
+        required: true
+        default: 'no'
+
+env:
+  TF_VAR_cluster_name: fitness-tracker
+  TF_VAR_image_repository: worknitinprajwal/fitness-tracker
+
+jobs:
+  terraform-destroy:
+    runs-on: self-hosted
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm_destroy }}" != "yes" ]; then
+            echo "ERROR: Destruction not confirmed. Set confirm_destroy to 'yes'."
+            exit 1
+          fi
+          echo "Destruction confirmed. Proceeding..."
+
+      - name: Verify required tools
+        run: |
+          echo "kind: $(kind version)"
+          echo "terraform: $(terraform version | head -1)"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Destroy
+        run: terraform destroy -auto-approve
+
+      - name: Verify Cleanup
+        run: |
+          kind get clusters 2>/dev/null || echo "No clusters remain"
+          echo "Infrastructure destroyed successfully."

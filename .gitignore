@@ -1,0 +1,14 @@
+target/
+*.class
+*.jar
+*.war
+.idea/
+*.iml
+.vscode/
+*.log
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup
+*.tfstate*
+.terraform.lock.hcl
+.DS_Store
