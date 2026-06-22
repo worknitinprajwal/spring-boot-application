@@ -24,11 +24,11 @@ resource "null_resource" "kind_cluster" {
     command = <<-EOT
       set -e
       CLUSTER="${self.triggers.cluster_name}"
-      KUBECONFIG="${pathexpand(format("~/.kube/kind-config-%s", self.triggers.cluster_name))}"
-      if kind get clusters 2>/dev/null | grep -q "^${CLUSTER}$"; then
-        echo "Deleting kind cluster: ${CLUSTER}"
-        kind delete cluster --name ${CLUSTER}
-        rm -f "${KUBECONFIG}"
+      KUBECONFIG="$HOME/.kube/kind-config-$CLUSTER"
+      if kind get clusters 2>/dev/null | grep -q "^$CLUSTER$"; then
+        echo "Deleting kind cluster: $CLUSTER"
+        kind delete cluster --name $CLUSTER
+        rm -f "$KUBECONFIG"
       fi
     EOT
   }
