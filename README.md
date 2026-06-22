@@ -347,6 +347,8 @@ curl http://fitness-tracker.local/actuator
 - [SOAPUI-INTEGRATION-GUIDE.md](../SOAPUI-INTEGRATION-GUIDE.md) - SoapUI API testing
 - [COMPLETE-TESTING-STACK.md](../COMPLETE-TESTING-STACK.md) - Testing stack overview
 
+Deployment
+
 ## License
 
 MIT License - Sample application for demonstration purposes.
