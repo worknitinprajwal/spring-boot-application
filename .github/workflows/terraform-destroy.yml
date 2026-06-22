@@ -9,15 +9,12 @@ on:
         default: 'no'
 
 env:
-  TF_VAR_cluster_name: fitness-tracker
-  TF_VAR_image_repository: worknitinprajwal/fitness-tracker
+  CLUSTER_NAME: fitness-tracker
+  NAMESPACE: fitness-tracker
 
 jobs:
-  terraform-destroy:
+  destroy:
     runs-on: self-hosted
-    defaults:
-      run:
-        working-directory: terraform
 
     steps:
       - name: Checkout repository
@@ -31,18 +28,65 @@ jobs:
           fi
           echo "Destruction confirmed. Proceeding..."
 
-      - name: Verify required tools
+      - name: Delete kind cluster
         run: |
-          echo "kind: $(kind version)"
-          echo "terraform: $(terraform version | head -1)"
+          if kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
+            echo "Deleting kind cluster: ${CLUSTER_NAME}"
+            kind delete cluster --name "${CLUSTER_NAME}"
+          else
+            echo "Cluster ${CLUSTER_NAME} does not exist — skipping"
+          fi
 
-      - name: Terraform Init
-        run: terraform init
-
-      - name: Terraform Destroy
-        run: terraform destroy -auto-approve
-
-      - name: Verify Cleanup
+      - name: Remove kubeconfig
         run: |
-          kind get clusters 2>/dev/null || echo "No clusters remain"
-          echo "Infrastructure destroyed successfully."
+          rm -vf "$HOME/.kube/kind-config-${CLUSTER_NAME}"
+
+      - name: Stop cloudflared tunnel
+        run: |
+          if sudo systemctl is-active cloudflared-tunnel.service &>/dev/null; then
+            sudo systemctl stop cloudflared-tunnel.service
+            sudo systemctl disable cloudflared-tunnel.service
+            echo "Cloudflared tunnel stopped and disabled"
+          else
+            echo "Cloudflared tunnel not active — skipping"
+          fi
+
+      - name: Clean Docker build cache
+        run: |
+          docker system prune -af --volumes 2>/dev/null || true
+          echo "Docker build cache cleaned"
+
+      - name: Reset Helm values.yaml tag
+        run: |
+          VALUES_FILE="k8s/helm-chart/values.yaml"
+          if [ -f "$VALUES_FILE" ]; then
+            # Reset tag to "latest" and pullPolicy to "IfNotPresent"
+            # Uses | as sed delimiter to avoid conflicts with / in values
+            sed -i 's|^  tag:.*|  tag: latest|' "$VALUES_FILE"
+            sed -i 's|^  pullPolicy:.*|  pullPolicy: IfNotPresent|' "$VALUES_FILE"
+            echo "Reset values.yaml tag to 'latest'"
+          else
+            echo "values.yaml not found — skipping"
+          fi
+
+      - name: Clean Terraform state
+        run: |
+          rm -vf terraform/terraform.tfstate terraform/terraform.tfstate.backup terraform/.terraform.lock.hcl
+          rm -vrf terraform/.terraform
+          echo "Terraform state cleaned"
+
+      - name: Verify cleanup
+        run: |
+          echo "=== Remaining clusters ==="
+          kind get clusters 2>/dev/null || echo "(none)"
+          echo ""
+          echo "=== Docker images ==="
+          docker images --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}" 2>/dev/null | head -5 || echo "(none)"
+          echo ""
+          echo "=== Cloudflared service ==="
+          sudo systemctl is-active cloudflared-tunnel.service 2>/dev/null || echo "(inactive)"
+          echo ""
+          echo "=== Values.yaml tag ==="
+          grep "tag:" k8s/helm-chart/values.yaml 2>/dev/null || echo "(not found)"
+          echo ""
+          echo "All infrastructure destroyed successfully."

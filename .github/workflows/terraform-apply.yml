@@ -47,3 +47,46 @@ jobs:
           echo "Retrieving admin password..."
           kubectl -n argocd get secret argocd-initial-admin-secret \
             -o jsonpath="{.data.password}" 2>/dev/null | base64 -d || echo "Secret not yet available"
+
+      - name: Setup Cloudflare Tunnel
+        run: |
+          CLOUDFLARED="/tmp/cloudflared"
+          if [ ! -f "$CLOUDFLARED" ]; then
+            echo "Installing cloudflared..."
+            curl -sL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o "$CLOUDFLARED"
+            chmod +x "$CLOUDFLARED"
+          fi
+
+          # Stop existing tunnel if running
+          sudo systemctl stop cloudflared-tunnel.service 2>/dev/null || true
+
+          # Create systemd service
+          sudo tee /etc/systemd/system/cloudflared-tunnel.service > /dev/null <<"SERVICEEOF"
+[Unit]
+Description=Cloudflare Tunnel for Spring Boot App
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=ubuntu
+ExecStart=/tmp/cloudflared tunnel --url http://localhost:3000 --no-autoupdate
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+SERVICEEOF
+
+          sudo systemctl daemon-reload
+          sudo systemctl enable cloudflared-tunnel.service
+          sudo systemctl start cloudflared-tunnel.service
+
+          # Wait for tunnel URL
+          sleep 10
+          TUNNEL_URL=$(sudo journalctl -u cloudflared-tunnel.service --since "30 sec ago" --no-pager 2>/dev/null | grep -o "https://[a-z0-9-]*\.trycloudflare\.com" | tail -1)
+          echo "============================================"
+          echo " App URL: $TUNNEL_URL"
+          echo " Health:  $TUNNEL_URL/actuator/health"
+          echo " Workouts: $TUNNEL_URL/api/workouts"
+          echo "============================================"
