@@ -60,23 +60,23 @@ jobs:
           # Stop existing tunnel if running
           sudo systemctl stop cloudflared-tunnel.service 2>/dev/null || true
 
-          # Create systemd service
-          sudo tee /etc/systemd/system/cloudflared-tunnel.service > /dev/null <<"SERVICEEOF"
-[Unit]
-Description=Cloudflare Tunnel for Spring Boot App
-After=network.target docker.service
-Requires=docker.service
-
-[Service]
-Type=simple
-User=ubuntu
-ExecStart=/tmp/cloudflared tunnel --url http://localhost:3000 --no-autoupdate
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-SERVICEEOF
+          # Create systemd service (printf avoids YAML parsing [Unit] as flow sequence)
+          printf '%s\n' \
+            '[Unit]' \
+            'Description=Cloudflare Tunnel for Spring Boot App' \
+            'After=network.target docker.service' \
+            'Requires=docker.service' \
+            '' \
+            '[Service]' \
+            'Type=simple' \
+            'User=ubuntu' \
+            'ExecStart=/tmp/cloudflared tunnel --url http://localhost:3000 --no-autoupdate' \
+            'Restart=always' \
+            'RestartSec=5' \
+            '' \
+            '[Install]' \
+            'WantedBy=multi-user.target' \
+            | sudo tee /etc/systemd/system/cloudflared-tunnel.service > /dev/null
 
           sudo systemctl daemon-reload
           sudo systemctl enable cloudflared-tunnel.service
