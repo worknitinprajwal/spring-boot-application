@@ -73,7 +73,7 @@ jobs:
           git config user.name "DevOps AI agent"
           git config user.email "devops-ai-agent@wipro.com"
           git add $HELM_CHART_PATH/values.yaml
-          git diff --cached --quiet || \
-            git commit -m "chore: update image tag to ${{ steps.tag.outputs.tag }} [skip ci]"
-          git pull --rebase origin main
-          git push
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "chore: update image tag to ${{ steps.tag.outputs.tag }} [skip ci]"
+          git fetch origin main
+          git push --force-with-lease origin main
