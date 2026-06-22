@@ -1,15 +1,13 @@
-locals {
-  kubeconfig_path = pathexpand("~/.kube/kind-config-${var.cluster_name}")
-}
-
 resource "null_resource" "kind_cluster" {
   triggers = {
-    cluster_name = var.cluster_name
+    cluster_name    = var.cluster_name
+    kubeconfig_path = pathexpand("~/.kube/kind-config-${var.cluster_name}")
   }
 
   provisioner "local-exec" {
     command = <<-EOT
       set -e
+      KUBECONFIG="${pathexpand(format("~/.kube/kind-config-%s", var.cluster_name))}"
       if kind get clusters 2>/dev/null | grep -q "^${var.cluster_name}$"; then
         echo "Cluster ${var.cluster_name} already exists"
       else
@@ -17,7 +15,7 @@ resource "null_resource" "kind_cluster" {
         kind create cluster \
           --name ${var.cluster_name} \
           --config ${path.module}/kind-config.yaml \
-          --kubeconfig ${local.kubeconfig_path}
+          --kubeconfig "$${KUBECONFIG}"
       fi
     EOT
   }
@@ -26,10 +24,12 @@ resource "null_resource" "kind_cluster" {
     when    = destroy
     command = <<-EOT
       set -e
-      if kind get clusters 2>/dev/null | grep -q "^${self.triggers.cluster_name}$"; then
-        echo "Deleting kind cluster: ${self.triggers.cluster_name}"
-        kind delete cluster --name ${self.triggers.cluster_name}
-        rm -f ${local.kubeconfig_path}
+      CLUSTER="${self.triggers.cluster_name}"
+      KUBECONFIG="${self.triggers.kubeconfig_path}"
+      if kind get clusters 2>/dev/null | grep -q "^${CLUSTER}$"; then
+        echo "Deleting kind cluster: ${CLUSTER}"
+        kind delete cluster --name ${CLUSTER}
+        rm -f "${KUBECONFIG}"
       fi
     EOT
   }
@@ -40,8 +40,9 @@ resource "null_resource" "wait_for_cluster" {
 
   provisioner "local-exec" {
     command = <<-EOT
+      KUBECONFIG="${pathexpand(format("~/.kube/kind-config-%s", var.cluster_name))}"
       echo "Waiting for cluster to be ready..."
-      kubectl --kubeconfig ${local.kubeconfig_path} wait --for=condition=Ready nodes --all --timeout=120s
+      kubectl wait --for=condition=Ready nodes --all --timeout=120s
     EOT
   }
 }
@@ -51,7 +52,8 @@ resource "null_resource" "argocd_namespace" {
 
   provisioner "local-exec" {
     command = <<-EOT
-      kubectl --kubeconfig ${local.kubeconfig_path} create namespace ${var.argocd_namespace} --dry-run=client -o yaml | kubectl --kubeconfig ${local.kubeconfig_path} apply -f -
+      KUBECONFIG="${pathexpand(format("~/.kube/kind-config-%s", var.cluster_name))}"
+      kubectl create namespace ${var.argocd_namespace} --dry-run=client -o yaml | kubectl apply -f -
     EOT
   }
 }
@@ -61,7 +63,8 @@ resource "null_resource" "application_namespace" {
 
   provisioner "local-exec" {
     command = <<-EOT
-      kubectl --kubeconfig ${local.kubeconfig_path} create namespace ${var.namespace} --dry-run=client -o yaml | kubectl --kubeconfig ${local.kubeconfig_path} apply -f -
+      KUBECONFIG="${pathexpand(format("~/.kube/kind-config-%s", var.cluster_name))}"
+      kubectl create namespace ${var.namespace} --dry-run=client -o yaml | kubectl apply -f -
     EOT
   }
 }
@@ -97,8 +100,9 @@ resource "null_resource" "wait_for_argocd" {
 
   provisioner "local-exec" {
     command = <<-EOT
+      KUBECONFIG="${pathexpand(format("~/.kube/kind-config-%s", var.cluster_name))}"
       echo "Waiting for ArgoCD server to be ready..."
-      kubectl --kubeconfig ${local.kubeconfig_path} wait \
+      kubectl wait \
         --namespace ${var.argocd_namespace} \
         --for=condition=ready pod \
         --selector=app.kubernetes.io/name=argocd-server \
@@ -112,7 +116,8 @@ resource "null_resource" "argocd_application" {
 
   provisioner "local-exec" {
     command = <<-EOT
-      cat <<EOF | kubectl --kubeconfig ${local.kubeconfig_path} apply -f -
+      KUBECONFIG="${pathexpand(format("~/.kube/kind-config-%s", var.cluster_name))}"
+      cat <<EOF | kubectl apply -f -
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -147,8 +152,9 @@ resource "null_resource" "argocd_password" {
 
   provisioner "local-exec" {
     command = <<-EOT
+      KUBECONFIG="${pathexpand(format("~/.kube/kind-config-%s", var.cluster_name))}"
       echo "=== ArgoCD Admin Password ==="
-      kubectl --kubeconfig ${local.kubeconfig_path} -n ${var.argocd_namespace} get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+      kubectl -n ${var.argocd_namespace} get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
       echo ""
     EOT
   }

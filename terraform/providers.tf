@@ -18,10 +18,10 @@ terraform {
 
 provider "helm" {
   kubernetes {
-    config_path = local.kubeconfig_path
+    config_path = pathexpand("~/.kube/kind-config-${var.cluster_name}")
   }
 }
 
 provider "kubernetes" {
-  config_path = local.kubeconfig_path
+  config_path = pathexpand("~/.kube/kind-config-${var.cluster_name}")
 }
