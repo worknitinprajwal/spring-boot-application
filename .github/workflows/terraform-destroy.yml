@@ -41,15 +41,21 @@ jobs:
         run: |
           rm -vf "$HOME/.kube/kind-config-${CLUSTER_NAME}"
 
-      - name: Stop cloudflared tunnel
+      - name: Stop cloudflared tunnels
         run: |
-          if sudo systemctl is-active cloudflared-tunnel.service &>/dev/null; then
-            sudo systemctl stop cloudflared-tunnel.service
-            sudo systemctl disable cloudflared-tunnel.service
-            echo "Cloudflared tunnel stopped and disabled"
-          else
-            echo "Cloudflared tunnel not active — skipping"
-          fi
+          for svc in cloudflared-tunnel.service cloudflared-argocd.service; do
+            if sudo systemctl is-active "$svc" &>/dev/null; then
+              sudo systemctl stop "$svc"
+              sudo systemctl disable "$svc"
+              echo "Stopped and disabled: $svc"
+            else
+              echo "$svc not active — skipping"
+            fi
+          done
+
+      - name: Kill ArgoCD port-forward
+        run: |
+          pkill -f "kubectl.*port-forward.*argocd" 2>/dev/null && echo "Port-forward killed" || echo "No port-forward running"
 
       - name: Clean Docker build cache
         run: |

@@ -90,3 +90,57 @@ jobs:
           echo " Health:  $TUNNEL_URL/actuator/health"
           echo " Workouts: $TUNNEL_URL/api/workouts"
           echo "============================================"
+
+      - name: Setup ArgoCD Public Tunnel
+        run: |
+          ARGOCD_SERVICE="cloudflared-argocd.service"
+
+          # Stop previous ArgoCD tunnel if exists
+          sudo systemctl stop "$ARGOCD_SERVICE" 2>/dev/null || true
+          pkill -f "kubectl.*port-forward.*argocd" 2>/dev/null || true
+
+          # Start kubectl port-forward to expose ArgoCD on localhost:30080
+          export KUBECONFIG="$HOME/.kube/kind-config-${TF_VAR_cluster_name}"
+          nohup kubectl port-forward -n argocd svc/argocd-server 30080:80 --address 0.0.0.0 \
+            > /tmp/argocd-port-forward.log 2>&1 &
+          echo "ArgoCD port-forward started (PID: $!)"
+
+          # Wait for port-forward to be ready
+          for i in $(seq 1 10); do
+            if curl -s -o /dev/null http://localhost:30080 2>/dev/null; then
+              echo "Port-forward ready"
+              break
+            fi
+            sleep 2
+          done
+
+          # Create systemd service for ArgoCD tunnel
+          printf '%s\n' \
+            '[Unit]' \
+            'Description=Cloudflare Tunnel for ArgoCD' \
+            'After=network.target' \
+            'Requires=network.target' \
+            '' \
+            '[Service]' \
+            'Type=simple' \
+            'User=ubuntu' \
+            'ExecStart=/tmp/cloudflared tunnel --url http://localhost:30080 --no-autoupdate' \
+            'Restart=always' \
+            'RestartSec=5' \
+            '' \
+            '[Install]' \
+            'WantedBy=multi-user.target' \
+            | sudo tee "/etc/systemd/system/$ARGOCD_SERVICE" > /dev/null
+
+          sudo systemctl daemon-reload
+          sudo systemctl enable "$ARGOCD_SERVICE"
+          sudo systemctl start "$ARGOCD_SERVICE"
+
+          # Wait for ArgoCD tunnel URL
+          sleep 10
+          ARGOCD_URL=$(sudo journalctl -u "$ARGOCD_SERVICE" --since "30 sec ago" --no-pager 2>/dev/null | grep -o "https://[a-z0-9-]*\.trycloudflare\.com" | tail -1)
+          echo "============================================"
+          echo " ArgoCD URL: $ARGOCD_URL"
+          echo " Username: admin"
+          echo " Password: (see step above)"
+          echo "============================================"
