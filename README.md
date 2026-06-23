@@ -2,6 +2,7 @@
 
 A sample Spring Boot REST API for tracking fitness workouts, demonstrating complete GitOps CI/CD with CloudBees CI, ArgoCD multi-cluster deployment, and comprehensive automated testing.
 
+
 ## Features
 
 - REST API for managing workouts (CRUD operations)
