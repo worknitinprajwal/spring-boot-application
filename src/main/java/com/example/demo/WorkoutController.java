@@ -4,58 +4,61 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @RestController
-@RequestMapping("/api/workouts")
-public class WorkoutController {
+@RequestMapping("/api")
+class WorkoutController {
 
     @Autowired
     private WorkoutRepository workoutRepository;
 
-    @GetMapping
+    @GetMapping("/workouts")
     public List<Workout> getAllWorkouts() {
         return workoutRepository.findAll();
     }
 
-    @GetMapping("/{id}")
+    @GetMapping("/workouts/{id}")
     public ResponseEntity<Workout> getWorkoutById(@PathVariable Long id) {
-        return workoutRepository.findById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+        Workout workout = workoutRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Workout not found with id " + id));
+        return ResponseEntity.ok(workout);
     }
 
-    @PostMapping
-    public Workout createWorkout(@RequestBody Workout workout) {
+    @PostMapping("/workouts")
+    public Workout createWorkout(@Valid @RequestBody Workout workout) {
         return workoutRepository.save(workout);
     }
 
-    @PutMapping("/{id}")
-    public ResponseEntity<Workout> updateWorkout(@PathVariable Long id, @RequestBody Workout workoutDetails) {
-        return workoutRepository.findById(id)
-                .map(workout -> {
-                    workout.setType(workoutDetails.getType());
-                    workout.setDuration(workoutDetails.getDuration());
-                    workout.setCaloriesBurned(workoutDetails.getCaloriesBurned());
-                    workout.setDate(workoutDetails.getDate());
-                    workout.setNotes(workoutDetails.getNotes());
-                    return ResponseEntity.ok(workoutRepository.save(workout));
-                })
-                .orElse(ResponseEntity.notFound().build());
+    @PutMapping("/workouts/{id}")
+    public ResponseEntity<Workout> updateWorkout(@PathVariable Long id, @Valid @RequestBody Workout workoutDetails) {
+        Workout workout = workoutRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Workout not found with id " + id));
+
+        workout.setTitle(workoutDetails.getTitle());
+        workout.setDescription(workoutDetails.getDescription());
+        workout.setDate(workoutDetails.getDate());
+
+        Workout updatedWorkout = workoutRepository.save(workout);
+        return ResponseEntity.ok(updatedWorkout);
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteWorkout(@PathVariable Long id) {
-        return workoutRepository.findById(id)
-                .map(workout -> {
-                    workoutRepository.delete(workout);
-                    return ResponseEntity.ok().<Void>build();
-                })
-                .orElse(ResponseEntity.notFound().build());
+    @DeleteMapping("/workouts/{id}")
+    public ResponseEntity<?> deleteWorkout(@PathVariable Long id) {
+        Workout workout = workoutRepository.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException("Workout not found with id " + id));
+
+        workoutRepository.delete(workout);
+        return ResponseEntity.ok().build();
     }
 
-    @GetMapping("/health")
-    public ResponseEntity<String> health() {
-        return ResponseEntity.ok("Fitness Tracker API is running!");
+    @GetMapping("/api/info")
+    public Map<String, String> getAppInfo() {
+        Map<String, String> info = new HashMap<>();
+        info.put("app", "WorkoutTracker");
+        info.put("version", "1.0.0");
+        return info;
     }
 }
