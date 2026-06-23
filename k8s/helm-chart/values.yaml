@@ -2,7 +2,7 @@ replicaCount: 2
 
 image:
   repository: worknitinprajwal/fitness-tracker
-  tag: main-6f93dbf-1782159660
+  tag: main-0be5172-1782194228
   pullPolicy: Always
 
 service:
